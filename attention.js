@@ -20,7 +20,7 @@ export const DEFAULT_THRESHOLDS = {
 };
 
 export const DEFAULT_TIMINGS = {
-  sideDelay: 0.4,     // s of continuous AWAY before side-eye
+  sideDelay: 0,       // s of continuous AWAY before side-eye (0 = on the first away frame)
   sadDelay: 2.0,      // s still AWAY after entering side before sad
   returnDelay: 0.3,   // s of continuous ON (from side/sad) before happy
   happyDuration: 1.2, // s of happy before falling back to neutral

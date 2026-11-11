@@ -7,7 +7,7 @@
 //                                             so board and website blink at the same moment)
 //                     P                      (ping, board answers HELLO)
 //   board -> laptop   HELLO EyeBuddy 1
-//                     T tap | T hold | T release | T swipe_left | T swipe_right
+//                     T touch | T release    (finger down / finger up)
 #pragma once
 #include "eyes.h"
 
@@ -36,15 +36,14 @@ class Brain {
   Mood linkMood_ = NEUTRAL;
   float linkX_ = 0, linkY_ = 0;
 
+  bool linkBlink_ = false;   // just got linked: blink hello
+
   // touch
-  bool down_ = false, holdFired_ = false;
-  uint32_t downAt_ = 0;
-  int x0_ = 0, y0_ = 0, lastX_ = 0, lastY_ = 0, moved_ = 0;
+  bool down_ = false;
   bool override_ = false, overrideHeld_ = false;
   uint32_t overrideUntil_ = 0;
   Mood overrideMood_ = HAPPY;
   float overrideX_ = 0, overrideY_ = 0;
-  int manual_ = NEUTRAL;   // expression picked by swiping
 };
 
 }  // namespace eyes

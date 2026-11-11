@@ -28,27 +28,26 @@ test('ON -> neutral', () => {
   assert.equal(last.effective, 'ON');
 });
 
-test('AWAY 0.3 s stays neutral', () => {
+test('AWAY -> side on the very first away frame', () => {
   const m = new MoodMachine();
   let { t } = run(m, 'ON', 0, 1);
-  const r = run(m, 'AWAY', t + DT, 0.3);
-  assert.equal(r.last.mood, 'neutral');
+  assert.equal(m.update('AWAY', t + DT).mood, 'side');
 });
 
-test('AWAY 0.4 s -> side', () => {
-  const m = new MoodMachine();
+test('sideDelay still works when set', () => {
+  const m = new MoodMachine({ sideDelay: 0.4 });
   let { t } = run(m, 'ON', 0, 1);
   t += DT;
   assert.equal(run(m, 'AWAY', t, 0.39).last.mood, 'neutral');
   assert.equal(m.update('AWAY', t + 0.4).mood, 'side');
 });
 
-test('AWAY 2.4 s total -> sad (not before)', () => {
+test('AWAY 2.0 s total -> sad (not before)', () => {
   const m = new MoodMachine();
   let { t } = run(m, 'ON', 0, 1);
   t += DT;
-  assert.equal(run(m, 'AWAY', t, 2.35).last.mood, 'side');
-  const r = m.update('AWAY', t + 2.4);
+  assert.equal(run(m, 'AWAY', t, 1.95).last.mood, 'side');
+  const r = m.update('AWAY', t + 2.0);
   assert.equal(r.mood, 'sad');
   assert.equal(r.caught, true);
 });

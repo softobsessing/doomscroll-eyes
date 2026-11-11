@@ -226,14 +226,10 @@ export class Engine {
 // Mirrors brain.cpp: touch beats laptop. Touch arrives as the board's "T ..." lines.
 export class Mirror {
   constructor(engine) { this.e = engine; this.override = null; this.held = false; }
+  // any touch: the welcome-back smile while the finger is down, plus 2.5 s after it lifts
   touch(kind, now) {
-    if (kind === 'tap') this.override = { mood: HAPPY, until: now + 2500 };
-    else if (kind === 'hold') { this.held = true; this.override = { mood: HAPPY, until: now }; }
-    else if (kind === 'release') { this.held = false; if (this.override) this.override.until = now + 1000; }
-    else if (kind === 'swipe_right' || kind === 'swipe_left') {
-      const m = (this.e.mood + (kind === 'swipe_right' ? 1 : MOODS.length - 1)) % MOODS.length;
-      this.override = { mood: m, until: now + 6000 };
-    }
+    if (kind === 'touch') { this.held = true; this.override = { mood: HAPPY, until: now }; }
+    else if (kind === 'release') { this.held = false; if (this.override) this.override.until = now + 2500; }
   }
   // linked: is the laptop driving it? (if not, the board just wanders)
   update(now, linked, mood, lookX, lookY) {

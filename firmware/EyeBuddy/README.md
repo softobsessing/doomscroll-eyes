@@ -14,16 +14,17 @@ https://espressif.github.io/esptool-js/ (Chrome). No Arduino needed.
 | Expression | When |
 |---|---|
 | dots (neutral) | default; always blinking (every 2–6 s, sometimes double), drifting slightly, following your face |
-| `^ ^` happy | you come back to the screen, you tap it, or you hold your finger on it (petting) |
-| half-moons (side-eye) | your eyes leave the laptop screen (~0.4 s) |
+| `^ ^` happy | you come back to the screen, or you touch it |
+| half-moons (side-eye) | your eyes leave the laptop screen (right away) |
 | droopy lids (disappointed) | still looking away 2 s later |
 
 Expression changes always happen mid-blink, so the eyes close in one mood and open in the next.
 
 ## Touch
-- **tap**: happy for 2.5 s, eyes look at your finger
-- **hold** (0.55 s+): happy while held, plus 1 s after
-- **swipe left / right**: step through the four expressions (shows each for 6 s)
+- **any touch**: the welcome-back smile right away, for as long as your finger stays plus 2.5 s after.
+  With no laptop connected the eyes look at your finger.
+
+Connecting the web app (USB or Bluetooth) makes the eyes blink hello.
 
 ## Upload
 
@@ -57,7 +58,7 @@ laptop -> board   E <neutral|happy|side|sad> <lookX -100..100> <lookY -100..100>
                   B | B2                                                           (blink now / double blink)
                   P                                                                (ping)
 board -> laptop   HELLO EyeBuddy 1
-                  T tap | T hold | T release | T swipe_left | T swipe_right
+                  T touch | T release                (finger down / finger up)
                   D fps <n> worst_ms <n>     (USB only, every 10 s, for debugging)
 ```
 lookX + = toward the right side of the board's screen, lookY + = down. If no `E` line arrives for 3 s the board

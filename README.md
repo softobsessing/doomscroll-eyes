@@ -45,7 +45,7 @@ as a toast ("you booped it").
 | laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad` |
 | laptop → board | `P` | ping |
 | board → laptop | `HELLO EyeBuddy 1` | on boot and in reply to `P` |
-| board → laptop | `T tap` / `T hold` / `T release` / `T swipe_left` / `T swipe_right` | touch |
+| board → laptop | `T touch` / `T release` | finger down / up (board smiles while touched + 2.5 s) |
 
 `lookX`, `lookY` are integers from −100 to 100, with 0,0 at the centre (and when no face is seen).
 Directions are on the board's screen **as the user sees it**: +X = pupils toward the right edge,
@@ -70,7 +70,7 @@ and the limit. A row turns red when that signal alone would count as "away".
 | gazeDown − gazeDown₀ > 0.35 | AWAY (eyes down, e.g. phone in lap) |
 | \|gazeSide − gazeSide₀\| > 0.5 | AWAY (eyes sideways) |
 
-Mood timing: AWAY for 0.4 s → `side`, still AWAY 2.0 s later → `sad` (counts one "caught"; the
+Mood timing: AWAY → `side` on the first away frame, still AWAY 2.0 s later → `sad` (counts one "caught"; the
 count resets at local midnight). After `side`/`sad`, ON for 0.3 s → `happy` for 1.2 s → `neutral`.
 
 Tips:

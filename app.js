@@ -28,10 +28,13 @@ function loadJSON(key, fallback) {
 function saveJSON(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }
 
 const stored = loadJSON(LS.settings, {});
+const SETTINGS_VERSION = 2;
+if ((stored.v || 1) < 2 && stored.timings) delete stored.timings.sideDelay;   // v2: side-eye is now immediate
 const settings = {
   thresholds: { ...DEFAULT_THRESHOLDS, ...stored.thresholds },
   timings: { ...DEFAULT_TIMINGS, ...stored.timings },
   look: { ...DEFAULT_LOOK, ...stored.look },
+  v: SETTINGS_VERSION,
 };
 const saveSettings = () => saveJSON(LS.settings, settings);
 let baseline = loadJSON(LS.baseline, null);
@@ -73,7 +76,10 @@ for (const l of [usb, ble]) {
     if (link === l || !link) renderPill(s);
     if (s.state !== 'connected' && link === l) { boardHello = ''; if (s.state === 'disconnected') link = null; }
     renderConnButtons();
-    if (s.state === 'connected') sendNow();
+    if (s.state === 'connected') {   // hello blink: the board blinks on its first E line, the preview right now
+      sendNow();
+      eyeEngine.blinkNow(Math.floor(performance.now()), false);
+    }
   });
   l.onLine(handleBoardLine);
 }
@@ -121,11 +127,8 @@ el.btnUsbAny.onclick = () => connectWith(usb, { anyPort: true });
 el.btnBle.onclick = () => (ble.connected || ble.state === 'reconnecting' ? ble.disconnect() : connectWith(ble));
 
 const TOUCH_TOASTS = {
-  tap: 'you booped it',
-  hold: 'petting EyeBuddy…',
+  touch: 'EyeBuddy is happy to see you',
   release: 'EyeBuddy liked that',
-  swipe_left: 'swiped left',
-  swipe_right: 'swiped right',
 };
 
 function handleBoardLine(line) {
@@ -410,7 +413,7 @@ const SLIDERS = {
     ['thresholds', 'blink', 'blink (eyes closed)', 0.2, 0.9, 0.01],
   ],
   slidersTiming: [
-    ['timings', 'sideDelay', 'away → side-eye', 0.1, 3, 0.05],
+    ['timings', 'sideDelay', 'away → side-eye', 0, 3, 0.05],
     ['timings', 'sadDelay', 'side-eye → disappointed', 0.5, 10, 0.1],
     ['timings', 'returnDelay', 'back → welcome', 0.05, 2, 0.05],
     ['timings', 'happyDuration', 'welcome back lasts', 0.3, 5, 0.1],
