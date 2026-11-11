@@ -98,8 +98,18 @@ test/attention.test.mjs           node test/attention.test.mjs
 vendor/                           tasks-vision 0.10.35 bundle + wasm, face_landmarker.task (float16 v1)
 ```
 
+## Expression buttons
+Under the status: **Auto** (the camera decides) or one of **focused / welcome back / side-eye / disappointed**.
+Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
+
+## Board firmware
+Source in [`firmware/EyeBuddy`](firmware/EyeBuddy). Ready-made `EyeBuddy-firmware.bin` is on the
+[releases page](https://github.com/softobsessing/doomscroll-eyes/releases): flash it at 0x0 with
+https://espressif.github.io/esptool-js/ in Chrome.
+
 ## Screen preview
 The round "EyeBuddy's screen" card shows exactly what the board shows, live, even with no board connected.
 `eyes.js` is a line-for-line port of the firmware's `EyeBuddy/eyes.cpp`, fed the same mood/look values the app sends
-(and it reacts to the board's touch events too). If you change shapes or timings in `eyes.cpp`, change `eyes.js` too and run
+(and it reacts to the board's touch events too). While connected the preview is the clock: its blinks are sent as `B` /
+`B2` and its small glances ride along in the `E` look values, so the board blinks and moves at the same moment. If you change shapes or timings in `eyes.cpp`, change `eyes.js` too and run
 `node test/eyes_port.test.mjs`, which checks the two pixel by pixel (after `cd tools/eyebuddy_preview && ./preview stills out/stills`).

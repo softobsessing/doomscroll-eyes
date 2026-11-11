@@ -47,7 +47,7 @@ const state = {
   lastFrameT: null,
   paused: false,
   demo: false,
-  demoMood: 'neutral',
+  manual: null,         // expression picked with the buttons (null = Auto: the camera decides)
   cal: null,            // {until, samples, auto}
   fps: 0,
 };
@@ -153,22 +153,40 @@ function toast(msg) {
 
 // What the board should show right now.
 function currentFrame() {
-  if (state.demo) return [state.demoMood, 0, 0];
-  if (state.paused) return ['neutral', 0, 0];
-  return [state.mood, state.lookX, state.lookY];
+  const tracking = !state.demo && !state.paused;
+  const lookX = tracking ? state.lookX : 0, lookY = tracking ? state.lookY : 0;
+  if (state.manual) return [state.manual, lookX, lookY];   // held by a button; eyes still follow you
+  if (!tracking) return ['neutral', 0, 0];
+  return [state.mood, lookX, lookY];
 }
-function sendNow() { if (link?.connected) link.send(eLine(...currentFrame())); }
+// The preview engine is the clock: its small glances ride along in the E line, and its blinks are
+// sent as B / B2, so the board's eyes do exactly what the preview does.
+function sendNow() {
+  if (!link?.connected) return;
+  const [mood, x, y] = currentFrame();
+  link.send(eLine(mood, x + eyeEngine.jitterX * 100, y + eyeEngine.jitterY * 100));
+}
 
 // ------------------------------------------------------------------ live preview of the board's screen
 // Same eye code as the firmware (eyes.js is a port of eyes.cpp), fed the same mood/look we send.
 const eyeEngine = new EyeEngine((Math.random() * 2 ** 32) >>> 0);
 const mirror = new Mirror(eyeEngine);
 const screenPreview = new ScreenPreview($('screen'));
-function previewLoop() {
+function stepEyes() {
   const now = Math.floor(performance.now());
   const [mood, x, y] = currentFrame();
   mirror.update(now, true, mood, Math.max(-100, Math.min(100, Math.round(x))), Math.max(-100, Math.min(100, Math.round(y))));   // ints, like the E line
+  const jx = eyeEngine.jitterX, jy = eyeEngine.jitterY;
   eyeEngine.update(now);
+  const blink = eyeEngine.takeBlinkEvent();
+  if (blink && link?.connected) link.send(blink.twice ? 'B2' : 'B');   // board blinks right now, with the preview
+  if (jx !== eyeEngine.jitterX || jy !== eyeEngine.jitterY) sendNow();  // new glance: tell the board straight away
+}
+// Mood changed: step the preview first so it starts its switch-blink at the same instant the board
+// gets the E line (otherwise the board would lead by up to one screen refresh).
+function syncNow() { stepEyes(); sendNow(); }
+function previewLoop() {
+  stepEyes();
   screenPreview.draw(eyeEngine);
   requestAnimationFrame(previewLoop);
 }
@@ -178,7 +196,7 @@ requestAnimationFrame(previewLoop);
 // tabs, which would let the board fall into idle mode (it idles after 3 s without `E`).
 const ticker = new Worker(URL.createObjectURL(new Blob(
   [`setInterval(() => postMessage(0), ${Math.round(1000 / SEND_HZ)});`], { type: 'text/javascript' })));
-ticker.onmessage = sendNow;
+ticker.onmessage = () => { stepEyes(); sendNow(); };   // keeps the blink clock running in background tabs too
 
 // ------------------------------------------------------------------ vision
 let vision = null;       // Vision instance once the model is loaded
@@ -226,11 +244,11 @@ function handleStartError(e, stage) {
       NoCameraApi: 'No camera access here (open http://localhost:8000 in Chrome).',
     }[e?.name] || `Camera unavailable: ${e?.message || e}`;
     el.camMsg.textContent = msg;
-    el.demoMsg.textContent = `${msg} Demo mode: send a mood by hand. To use the camera, allow it via the icon in the address bar and reload.`;
+    el.demoMsg.textContent = `${msg} Pick an expression below. To use the camera, allow it via the icon in the address bar and reload.`;
   } else {
     el.camMsg.textContent = 'Face model failed to load.';
     el.visionStatus.textContent = `face model error: ${e?.message || e}`;
-    el.demoMsg.textContent = 'Face tracking unavailable. Demo mode: send a mood by hand.';
+    el.demoMsg.textContent = 'Face tracking unavailable. Pick an expression below.';
     document.body.dataset.vision = 'error';
   }
   vision?.stopCamera(el.video);
@@ -279,7 +297,7 @@ function onFrame(source) {
   const r = machine.update(cls, t);
   state.effective = r.effective;
   if (r.caught) bumpCaught();
-  if (r.changed) { state.mood = r.mood; sendNow(); }
+  if (r.changed) { state.mood = r.mood; syncNow(); }
 
   // Eye-follow target. The board faces the user like a mirror. In the RAW camera image the
   // user moving to THEIR left moves toward image +x (the camera sees them flipped). For the
@@ -320,7 +338,7 @@ function stepCalibration(s, t) {
   }
   baseline = computeBaseline(c.samples);
   saveJSON(LS.baseline, baseline);
-  machine.reset(); state.mood = 'neutral'; sendNow();
+  machine.reset(); state.mood = 'neutral'; syncNow();
   el.calMsg.textContent = `Calibrated (${c.samples.length} frames).`;
   setTimeout(() => { if (!state.cal) el.calMsg.textContent = ''; }, 4000);
 }
@@ -339,7 +357,7 @@ el.btnPause.onclick = async () => {
     machine.reset(); state.mood = 'neutral'; state.lookX = state.lookY = 0; state.cls = null; state.lastFrameT = null;
     drawOverlay(null);
     el.camMsg.textContent = 'tracking paused — camera off';
-    sendNow(); // E neutral 0 0
+    syncNow(); // E neutral 0 0
     scheduleRender();
   } else {
     el.btnCal.disabled = false;
@@ -354,9 +372,15 @@ function setDemo(on) {
   el.btnPause.disabled = on;
   scheduleRender();
 }
-for (const b of el.demo.querySelectorAll('button[data-mood]')) {
-  b.onclick = () => { state.demoMood = b.dataset.mood; sendNow(); scheduleRender(); };
+// Expression buttons: Auto (camera decides) or hold one expression on the board.
+const exprButtons = [...document.querySelectorAll('#exprBtns button')];
+function setExpression(expr) {
+  state.manual = expr === 'auto' ? null : expr;
+  for (const btn of exprButtons) btn.setAttribute('aria-pressed', String(btn.dataset.expr === expr));
+  syncNow();   // preview and board start the switch-blink at the same instant
+  scheduleRender();
 }
+for (const btn of exprButtons) btn.onclick = () => setExpression(btn.dataset.expr);
 
 // ------------------------------------------------------------------ overlay
 function drawOverlay(landmarks) {
@@ -512,7 +536,7 @@ function render() {
   }
   el.mood.textContent = MOOD_LABELS[mood];
   el.mood.dataset.mood = mood;
-  el.moodWord.textContent = mood;
+  el.moodWord.textContent = state.manual ? `${mood} · held (press Auto to let the camera decide)` : mood;
   document.body.dataset.cls = state.cls || '';
   if (vision?.ready && !state.demo && !state.paused) {
     el.visionStatus.textContent = `face model ready (${vision.delegate}) · ${state.signals?.face ? 'face found' : 'no face'} · ${fmt(state.fps, 0)} fps`;

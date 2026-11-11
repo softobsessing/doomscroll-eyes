@@ -61,13 +61,19 @@
       </div>
 
       <div id="demo" class="demo" hidden>
-        <p id="demoMsg">Camera unavailable. Demo mode: send a mood by hand.</p>
-        <div class="demo-btns">
-          <button type="button" data-mood="neutral">focused</button>
-          <button type="button" data-mood="side">side-eye</button>
-          <button type="button" data-mood="sad">disappointed</button>
-          <button type="button" data-mood="happy">welcome back</button>
+        <p id="demoMsg">Camera unavailable. Pick an expression below.</p>
+      </div>
+
+      <div class="expr">
+        <div class="label">expression</div>
+        <div class="expr-btns" id="exprBtns" role="group" aria-label="Expression">
+          <button type="button" data-expr="auto" aria-pressed="true">Auto <span class="muted small">(camera)</span></button>
+          <button type="button" data-expr="neutral" aria-pressed="false"><span class="ico ico-neutral"></span>focused</button>
+          <button type="button" data-expr="happy" aria-pressed="false"><span class="ico ico-happy"></span>welcome back</button>
+          <button type="button" data-expr="side" aria-pressed="false"><span class="ico ico-side"></span>side-eye</button>
+          <button type="button" data-expr="sad" aria-pressed="false"><span class="ico ico-sad"></span>disappointed</button>
         </div>
+        <p id="exprNote" class="muted small">Auto: the camera decides. Press an expression to hold it on the board until you press Auto.</p>
       </div>
     </section>
 

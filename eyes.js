@@ -104,6 +104,7 @@ export class Engine {
     this.started = false; this.lastMs = 0;
     this.mood = NEUTRAL; this.target = NEUTRAL;
     this.blinkPhase = 0; this.blinkStart = 0; this.nextBlink = 0;
+    this.autoBlink = true; this.blinkEvent = null;   // blinkEvent: {twice} once per self-started blink
     this.doubleBlink = false; this.swapped = false;
     this.lookTX = 0; this.lookTY = 0; this.lookX = 0; this.lookY = 0;
     this.jitX = 0; this.jitY = 0; this.nextJitter = 0;
@@ -121,6 +122,14 @@ export class Engine {
   setMood(m) { const i = typeof m === 'string' ? MOODS.indexOf(m) : m; if (i >= 0) this.target = i; }
   setLook(x, y) { this.lookTX = Math.max(-1, Math.min(1, x)); this.lookTY = Math.max(-1, Math.min(1, y)); }
   setWander(on) { this.wander = on; }
+  setAutoBlink(on) { this.autoBlink = on; }
+  blinkNow(now, twice) {
+    if (this.blinkPhase || this.target !== this.mood) return false;
+    this.startBlink(now >>> 0); this.doubleBlink = !!twice; return true;
+  }
+  takeBlinkEvent() { const e = this.blinkEvent; this.blinkEvent = null; return e; }
+  get jitterX() { return this.jitX; }
+  get jitterY() { return this.jitY; }
   get moodName() { return MOODS[this.mood]; }
   get blinking() { return this.blinkPhase !== 0; }
 
@@ -154,10 +163,11 @@ export class Engine {
     if (dt > 0.1) dt = 0.1;
     this.lastMs = now;
 
-    if (!this.blinkPhase && (this.target !== this.mood || reached(now, this.nextBlink))) {
+    if (!this.blinkPhase && (this.target !== this.mood || (this.autoBlink && reached(now, this.nextBlink)))) {
       const natural = this.target === this.mood;
       this.startBlink(now);
       this.doubleBlink = natural && this.randf(0, 1) < 0.15;
+      if (natural) this.blinkEvent = { twice: this.doubleBlink };
     }
     let open = 1;
     if (this.blinkPhase) {
@@ -170,7 +180,9 @@ export class Engine {
       else { this.wanderX = this.randf(-0.7, 0.7); this.wanderY = this.randf(-0.45, 0.45); }
       this.nextWander = (now + Math.trunc(this.randf(900, 3200))) >>> 0;
     }
-    if (reached(now, this.nextJitter)) {
+    if (!this.autoBlink) {
+      this.jitX = this.jitY = 0;
+    } else if (reached(now, this.nextJitter)) {
       this.jitX = this.randf(-0.05, 0.05);
       this.jitY = this.randf(-0.04, 0.04);
       this.nextJitter = (now + Math.trunc(this.randf(400, 1600))) >>> 0;
@@ -228,7 +240,7 @@ export class Mirror {
   // linked: is the laptop driving it? (if not, the board just wanders)
   update(now, linked, mood, lookX, lookY) {
     if (this.override && !this.held && now >= this.override.until) this.override = null;
-    if (this.override) { this.e.setWander(false); this.e.setMood(this.override.mood); this.e.setLook(0, 0); }
+    if (this.override) { this.e.setWander(false); this.e.setMood(this.override.mood); this.e.setLook(linked ? lookX / 100 : 0, linked ? lookY / 100 : 0); }
     else if (linked) { this.e.setWander(false); this.e.setMood(mood); this.e.setLook(lookX / 100, lookY / 100); }
     else { this.e.setWander(true); this.e.setMood(NEUTRAL); }
   }
