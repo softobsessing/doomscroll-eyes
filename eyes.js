@@ -8,12 +8,12 @@ export const SCREEN = 466;
 
 // spacing, gazeX, gazeY, halfW, halfH  (same table as eyes.cpp)
 const STYLES = [
-  [92, 70, 55, 24, 24],
+  [100, 70, 55, 36, 36],
   [105, 30, 20, 40, 27],
   [98, 45, 25, 74, 37],
   [100, 30, 15, 70, 48],
 ];
-const DOT_R = 24;
+const DOT_R = 36;
 const HAPPY_HALF_W = 34, HAPPY_HALF_H = 21, HAPPY_STROKE = 6.0;
 const SIDE_R = 74;
 const SAD_RX = 70, SAD_RY = 66, SAD_H = 76;
@@ -136,6 +136,7 @@ export class Engine {
   startBlink(now) { this.blinkPhase = 1; this.blinkStart = now; this.swapped = false; this.doubleBlink = false; }
   blinkOpenness(now) {
     let t = (now - this.blinkStart) >>> 0;
+    if (!this.swapped && t >= BLINK_CLOSE) { this.mood = this.target; this.swapped = true; }   // see eyes.cpp
     const total = this.doubleBlink ? 2 * BLINK_END + DOUBLE_GAP : BLINK_END;
     if (t >= total) { this.blinkPhase = 0; return 1; }
     if (t >= BLINK_END) {
@@ -143,10 +144,7 @@ export class Engine {
       t -= BLINK_END + DOUBLE_GAP;
     }
     if (t < BLINK_CLOSE) { const u = t / BLINK_CLOSE; return 1 - u * u; }
-    if (t < BLINK_SHUT) {
-      if (!this.swapped) { this.mood = this.target; this.swapped = true; }
-      return 0;
-    }
+    if (t < BLINK_SHUT) return 0;
     const u = (t - BLINK_SHUT) / (BLINK_END - BLINK_SHUT);
     return 1 - (1 - u) * (1 - u);
   }

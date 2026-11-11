@@ -19,13 +19,13 @@ struct Style {
   float halfW, halfH;   // half size of the drawn shape (for bounding boxes)
 };
 static const Style STYLES[MOOD_COUNT] = {
-    /* NEUTRAL dots      */ {92, 70, 55, 24, 24},
+    /* NEUTRAL dots      */ {100, 70, 55, 36, 36},
     /* HAPPY  ^ ^        */ {105, 30, 20, 40, 27},
     /* SIDE   half-moons */ {98, 45, 25, 74, 37},
     /* SAD    heavy lids */ {100, 30, 15, 70, 48},
 };
 
-constexpr float DOT_R = 24;
+constexpr float DOT_R = 36;
 constexpr float HAPPY_HALF_W = 34, HAPPY_HALF_H = 21, HAPPY_STROKE = 6.0f;
 constexpr float SIDE_R = 74;                                // half circle, flat lid through the middle
 constexpr float SAD_RX = 70, SAD_RY = 66, SAD_H = 76;       // boat shape under a heavy lid
@@ -165,6 +165,10 @@ void Engine::startBlink(uint32_t now) {
 
 float Engine::blinkOpenness(uint32_t now) {
   uint32_t t = now - blinkStart_;
+  // Swap the mood at the first update after the eyes reach shut. Don't require landing inside the
+  // 30 ms shut window: at 50-60 ms per frame every sample skipped it, the mood never changed and the
+  // eyes re-blinked forever (looked like a permanent squint).
+  if (!swappedThisBlink_ && t >= BLINK_CLOSE) { mood_ = target_; swappedThisBlink_ = true; }
   uint32_t total = doubleBlink_ ? 2 * BLINK_END + DOUBLE_GAP : BLINK_END;
   if (t >= total) { blinkPhase_ = 0; return 1; }
   if (t >= BLINK_END) {
@@ -172,10 +176,7 @@ float Engine::blinkOpenness(uint32_t now) {
     t -= BLINK_END + DOUBLE_GAP;
   }
   if (t < BLINK_CLOSE) { float u = t / (float)BLINK_CLOSE; return 1 - u * u; }
-  if (t < BLINK_SHUT) {
-    if (!swappedThisBlink_) { mood_ = target_; swappedThisBlink_ = true; }  // swap while the eyes are shut
-    return 0;
-  }
+  if (t < BLINK_SHUT) return 0;
   float u = (t - BLINK_SHUT) / (float)(BLINK_END - BLINK_SHUT);
   return 1 - (1 - u) * (1 - u);
 }
