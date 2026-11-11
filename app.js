@@ -53,6 +53,7 @@ const state = {
   manual: null,         // expression picked with the buttons (null = Auto: the camera decides)
   cal: null,            // {until, samples, auto}
   fps: 0,
+  userBlink: false,     // your eyes are closed right now (camera)
 };
 
 // ------------------------------------------------------------------ caught-today counter
@@ -185,6 +186,10 @@ function stepEyes() {
   if (blink && link?.connected) link.send(blink.twice ? 'B2' : 'B');   // board blinks right now, with the preview
   if (jx !== eyeEngine.jitterX || jy !== eyeEngine.jitterY) sendNow();  // new glance: tell the board straight away
 }
+function blinkWithUser() {
+  stepEyes();
+  if (eyeEngine.blinkNow(Math.floor(performance.now()), false) && link?.connected) link.send('B');
+}
 // Mood changed: step the preview first so it starts its switch-blink at the same instant the board
 // gets the E line (otherwise the board would lead by up to one screen refresh).
 function syncNow() { stepEyes(); sendNow(); }
@@ -301,6 +306,12 @@ function onFrame(source) {
   state.effective = r.effective;
   if (r.caught) bumpCaught();
   if (r.changed) { state.mood = r.mood; syncNow(); }
+
+  // You blink -> EyeBuddy blinks (preview now, board via B). Fires once as your eyes close; re-arms
+  // once they're clearly open again. Its own random blinks only fill in when you don't blink for a while.
+  const bth = settings.thresholds.blink;
+  if (s.face && !state.userBlink && s.blink > bth) { state.userBlink = true; blinkWithUser(); }
+  else if (!s.face || s.blink < bth - 0.15) state.userBlink = false;
 
   // Eye-follow target. The board faces the user like a mirror. In the RAW camera image the
   // user moving to THEIR left moves toward image +x (the camera sees them flipped). For the

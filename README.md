@@ -71,7 +71,7 @@ and the limit. A row turns red when that signal alone would count as "away".
 | \|gazeSide − gazeSide₀\| > 0.5 | AWAY (eyes sideways) |
 
 Mood timing: AWAY → `side` on the first away frame, still AWAY 2.0 s later → `sad` (counts one "caught"; the
-count resets at local midnight). After `side`/`sad`, ON for 0.3 s → `happy` for 1.2 s → `neutral`.
+count resets at local midnight). When you blink, EyeBuddy blinks too (preview right away, board via `B`); its own random blinks only fill in gaps. After `side`/`sad`, ON for 0.3 s → `happy` for 1.2 s → `neutral`.
 
 Tips:
 * If glancing down at the keyboard trips "away", raise **eyes down** or **head down**.
