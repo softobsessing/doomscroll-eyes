@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EyeBuddy</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <header>
+    <h1>EyeBuddy</h1>
+    <div class="conn">
+      <button id="btnUsb" type="button">Connect USB</button>
+      <button id="btnUsbAny" type="button" class="link-btn" title="Pick any serial port (no Espressif filter)">Other port…</button>
+      <button id="btnBle" type="button">Connect Bluetooth</button>
+      <span id="pill" class="pill" data-state="disconnected">not connected</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card cam">
+      <div class="preview">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div id="camMsg" class="cam-msg">starting camera…</div>
+      </div>
+      <label class="check"><input type="checkbox" id="chkOverlay"> landmark overlay</label>
+      <p class="privacy">Video stays on this computer. Face tracking runs locally in your browser; no frames are uploaded or stored.</p>
+      <p id="visionStatus" class="muted small">loading face model…</p>
+    </section>
+
+    <section class="card screen">
+      <div class="label">EyeBuddy's screen</div>
+      <div class="visor"><canvas id="screen" width="466" height="466" aria-label="Live preview of the board's eyes"></canvas></div>
+      <p id="screenNote" class="muted small">Live preview, drawn with the same code as the board. The eyes follow you.</p>
+    </section>
+
+    <section class="card status">
+      <div class="row">
+        <div>
+          <div class="label">you are</div>
+          <div id="cls" class="big" data-cls="">—</div>
+          <div id="reasons" class="muted small">&nbsp;</div>
+        </div>
+        <div>
+          <div class="label">EyeBuddy feels</div>
+          <div id="mood" class="big" data-mood="neutral">focused</div>
+          <div id="moodWord" class="muted small">neutral</div>
+        </div>
+        <div>
+          <div class="label">caught today</div>
+          <div id="caught" class="big">0</div>
+          <div class="muted small">times it got disappointed</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="btnCal" type="button">Calibrate</button>
+        <button id="btnPause" type="button" aria-pressed="false">Pause tracking</button>
+        <span id="calMsg" class="muted"></span>
+      </div>
+
+      <div id="demo" class="demo" hidden>
+        <p id="demoMsg">Camera unavailable. Demo mode: send a mood by hand.</p>
+        <div class="demo-btns">
+          <button type="button" data-mood="neutral">focused</button>
+          <button type="button" data-mood="side">side-eye</button>
+          <button type="button" data-mood="sad">disappointed</button>
+          <button type="button" data-mood="happy">welcome back</button>
+        </div>
+      </div>
+    </section>
+
+    <details class="card tuning" id="tuning">
+      <summary>Tuning</summary>
+      <div class="tuning-grid">
+        <div>
+          <h3>Thresholds</h3>
+          <div id="slidersThresh"></div>
+          <h3>Timing (seconds)</h3>
+          <div id="slidersTiming"></div>
+          <h3>Eye follow</h3>
+          <div id="slidersLook"></div>
+          <button id="btnDefaults" type="button" class="small-btn">Reset to defaults</button>
+        </div>
+        <div>
+          <h3>Live signals</h3>
+          <table class="signals">
+            <thead><tr><th>signal</th><th>now</th><th>baseline</th><th>Δ</th><th>limit</th></tr></thead>
+            <tbody id="sigBody"></tbody>
+          </table>
+          <p class="muted small">Pitch: up = +, head tilted down = −. Yaw: + = turned to your left. Gaze side: + = eyes to your left.
+            A row turns red when it alone would count as "away".</p>
+          <p id="baselineInfo" class="muted small"></p>
+        </div>
+      </div>
+    </details>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
