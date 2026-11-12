@@ -2,14 +2,15 @@
 // Pure C++ like eyes.h, so it can be tested on the Mac.
 //
 // Protocol (text lines, '\n'-terminated, same over USB serial and Bluetooth):
-//   laptop -> board   E <neutral|happy|side|sad|wow> <lookX -100..100> <lookY -100..100>   (wow = surprised)
+//   laptop -> board   E <neutral|happy|side|sad|wow|chill> <lookX -100..100> <lookY -100..100>
+//                       (neutral = focused tall ovals, wow = surprised, chill = chilling round dots)
 //                     K <screen RRGGBB> <eyes RRGGBB>   (colors, e.g. "K 000000 EFC742")
 //                     M <secondsLeft> <totalSeconds>    (pomodoro start/sync; "M 0 0" = stop)
 //                     S                      (show the pomodoro time left for 2 s)
 //                     B | B2                 (blink now / double blink: the web app is the blink clock,
 //                                             so board and website blink at the same moment)
 //                     P                      (ping, board answers HELLO)
-//   board -> laptop   HELLO EyeBuddy 2
+//   board -> laptop   HELLO EyeBuddy 3
 //                     T touch | T release    (finger down / finger up; during a pomodoro a touch shows the time left)
 #pragma once
 #include "eyes.h"

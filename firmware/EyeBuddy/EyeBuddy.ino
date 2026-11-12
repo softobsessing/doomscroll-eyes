@@ -105,7 +105,7 @@ void setup() {
   engine.begin(esp_random());
   loadColors();
   brain.begin(&engine, emit);
-  emit("HELLO EyeBuddy 2");
+  emit("HELLO EyeBuddy 3");
 }
 
 void loop() {

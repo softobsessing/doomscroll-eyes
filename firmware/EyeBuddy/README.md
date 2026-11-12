@@ -13,7 +13,8 @@ https://espressif.github.io/esptool-js/ (Chrome). No Arduino needed.
 
 | Expression | When |
 |---|---|
-| dots (neutral) | default; always blinking (every 2–6 s, sometimes double), drifting slightly, following your face |
+| tall ovals (focused) | default; always blinking (every 2–6 s, sometimes double), drifting slightly, following your face |
+| round dots (chilling) | the website's **chilling** button |
 | `^ ^` happy | you come back to the screen, or you touch it |
 | half-moons (side-eye) | your eyes leave the laptop screen (right away) |
 | droopy lids (disappointed) | still looking away 2 s later |
@@ -67,13 +68,13 @@ To go back to the Waveshare factory clock: `esp32-tools/venv/bin/esptool.py --ch
 
 ## Protocol (USB serial and Bluetooth Nordic UART, text lines)
 ```
-laptop -> board   E <neutral|happy|side|sad|wow> <lookX -100..100> <lookY -100..100>    (~20 per second; wow = surprised)
+laptop -> board   E <neutral|happy|side|sad|wow|chill> <lookX -100..100> <lookY -100..100>   (~20/s; neutral = focused, wow = surprised, chill = chilling)
                   K <screen RRGGBB> <eyes RRGGBB>                                       (colors)
                   M <secondsLeft> <totalSeconds>                                        (pomodoro; M 0 0 = stop)
                   S                                                                     (show the time left for 2 s)
                   B | B2                                                           (blink now / double blink)
                   P                                                                (ping)
-board -> laptop   HELLO EyeBuddy 2
+board -> laptop   HELLO EyeBuddy 3
                   T touch | T release                (finger down / finger up)
                   D fps <n> worst_ms <n>     (USB only, every 10 s, for debugging)
 ```

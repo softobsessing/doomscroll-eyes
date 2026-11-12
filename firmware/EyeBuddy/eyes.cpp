@@ -4,7 +4,7 @@
 
 namespace eyes {
 
-static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad", "wow"};
+static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad", "wow", "chill"};
 const char* moodName(Mood m) { return m < MOOD_COUNT ? NAMES[m] : "?"; }
 bool parseMood(const char* s, Mood* out) {
   for (int i = 0; i < MOOD_COUNT; i++)
@@ -19,11 +19,12 @@ struct Style {
   float halfW, halfH;   // half size of the drawn shape (for bounding boxes)
 };
 static const Style STYLES[MOOD_COUNT] = {
-    /* NEUTRAL dots      */ {100, 70, 55, 36, 36},
+    /* NEUTRAL tall ovals (focused, default) */ {103, 50, 40, 55, 74},
     /* HAPPY  ^ ^        */ {105, 30, 20, 40, 27},
     /* SIDE   half-moons */ {98, 45, 25, 74, 37},
     /* SAD    heavy lids */ {100, 30, 15, 70, 48},
     /* WOW    surprised  */ {105, 25, 15, 101, 140},   // spacing/size animate, see WOW_KEYS
+    /* CHILL  dots       */ {100, 70, 55, 36, 36},     // "chilling": the original round dots
 };
 
 // ---- surprised: the eyes grow through the four reference frames (logical px), smallest to biggest ----
@@ -61,7 +62,8 @@ static WowKey wowAt(float t) {
   return r;
 }
 
-constexpr float DOT_R = 36;
+constexpr float FOCUS_RX = 55, FOCUS_RY = 74;               // focused: tall ovals
+constexpr float DOT_R = 36;                                 // chilling: round dots
 constexpr float HAPPY_HALF_W = 34, HAPPY_HALF_H = 21, HAPPY_STROKE = 6.0f;
 constexpr float SIDE_R = 74;                                // half circle, flat lid through the middle
 constexpr float SAD_RX = 70, SAD_RY = 66, SAD_H = 76;       // boat shape under a heavy lid
@@ -123,7 +125,11 @@ static float shapeDistance(const Eye& e, float x, float y, float* crease) {
   *crease = 0;
   const float s = e.squash, side = e.side;
   switch (e.shape) {
-    case NEUTRAL: {
+    case NEUTRAL: {   // tall oval, squashes flat when blinking
+      float ry = fmaxf(FOCUS_RY * s, MIN_CLOSED_H / 2);
+      return sdEllipse(x, y, FOCUS_RX, ry);
+    }
+    case CHILL: {     // round dot
       float ry = fmaxf(DOT_R * s, MIN_CLOSED_H / 2);
       return sdEllipse(x, y, DOT_R, ry);
     }

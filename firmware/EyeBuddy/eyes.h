@@ -8,9 +8,10 @@
 
 namespace eyes {
 
-// WOW = "surprised" (short name so the longest E line still fits one Bluetooth packet)
-enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, WOW, MOOD_COUNT };
-const char* moodName(Mood m);              // "neutral", "happy", "side", "sad", "wow"
+// NEUTRAL = "focused" (tall ovals, the default), WOW = "surprised", CHILL = "chilling" (round dots).
+// Short names so the longest E line still fits one Bluetooth packet.
+enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, WOW, CHILL, MOOD_COUNT };
+const char* moodName(Mood m);              // "neutral", "happy", "side", "sad", "wow", "chill"
 bool parseMood(const char* s, Mood* out);
 
 constexpr int SCREEN = 466;

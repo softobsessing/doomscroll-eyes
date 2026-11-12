@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
     int k = 0;
     for (uint32_t t = 0; t <= 6000; t += 10) {
       e.setWander(false); e.setAutoBlink(false);
-      Mood m = t < 800 ? NEUTRAL : t < 3000 ? WOW : t < 3800 ? HAPPY : t < 4600 ? SIDE : t < 5400 ? SAD : WOW;
+      Mood m = t < 800 ? NEUTRAL : t < 3000 ? WOW : t < 3800 ? HAPPY : t < 4600 ? SIDE : t < 5400 ? SAD : t < 5800 ? CHILL : WOW;
       e.setMood(m);
       e.setLook((float)(0.5 * sin(t / 600.0)), (float)(0.4 * cos(t / 800.0)));
       if (t == 2000) e.setColors(0x14213D, 0xFF5FA2);   // navy screen, pink eyes

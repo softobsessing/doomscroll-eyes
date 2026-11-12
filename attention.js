@@ -10,6 +10,7 @@ export const MOOD_LABELS = {
   side: 'side-eye',
   sad: 'disappointed',
   wow: 'surprised',   // button only (the camera never picks it); short name keeps E lines in one BLE packet
+  chill: 'chilling',  // button only: the original round-dot eyes
 };
 
 export const DEFAULT_THRESHOLDS = {

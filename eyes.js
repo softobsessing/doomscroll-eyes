@@ -2,19 +2,21 @@
 // so the on-screen preview shows exactly what the round AMOLED shows. If you change the shapes or
 // timings in eyes.cpp, change them here too (test/eyes_port.test.mjs compares the two).
 
-export const MOODS = ['neutral', 'happy', 'side', 'sad', 'wow'];   // wow = surprised
-const NEUTRAL = 0, HAPPY = 1, SIDE = 2, SAD = 3, WOW = 4;
+// neutral = focused (tall ovals, the default), wow = surprised, chill = chilling (round dots)
+export const MOODS = ['neutral', 'happy', 'side', 'sad', 'wow', 'chill'];
+const NEUTRAL = 0, HAPPY = 1, SIDE = 2, SAD = 3, WOW = 4, CHILL = 5;
 export const DEFAULT_EYE_COLOR = 0xEFC742, DEFAULT_FACE_COLOR = 0x000000;
 const CREASE_DARKEN = 0.66;
 export const SCREEN = 466;
 
 // spacing, gazeX, gazeY, halfW, halfH  (same table as eyes.cpp)
 const STYLES = [
-  [100, 70, 55, 36, 36],
+  [103, 50, 40, 55, 74],   // focused: tall ovals
   [105, 30, 20, 40, 27],
   [98, 45, 25, 74, 37],
   [100, 30, 15, 70, 48],
   [105, 25, 15, 101, 140],   // WOW: spacing/size animate, see WOW_KEYS
+  [100, 70, 55, 36, 36],     // CHILL: the original round dots
 ];
 
 // surprised: the eyes grow through the four reference frames, smallest to biggest (same table as eyes.cpp)
@@ -39,7 +41,8 @@ function wowAt(t) {
   const c = (j) => catmull(k0[j], k1[j], k2[j], k3[j], u);
   return { spacing: c(1), rx: c(2), ry: c(3), pupilR: Math.max(1.5, c(4)), pupilIn: Math.max(0, c(5)) };
 }
-const DOT_R = 36;
+const FOCUS_RX = 55, FOCUS_RY = 74;   // focused: tall ovals
+const DOT_R = 36;                     // chilling: round dots
 const HAPPY_HALF_W = 34, HAPPY_HALF_H = 21, HAPPY_STROKE = 6.0;
 const SIDE_R = 74;
 const SAD_RX = 70, SAD_RY = 66, SAD_H = 76;
@@ -97,7 +100,8 @@ function sdBezier(px, py, ax, ay, bx, by, cx, cy) {
 function shapeDistance(e, x, y) {
   const s = e.squash, side = e.side;
   switch (e.shape) {
-    case NEUTRAL: return [sdEllipse(x, y, DOT_R, Math.max(DOT_R * s, MIN_CLOSED_H / 2)), 0];
+    case NEUTRAL: return [sdEllipse(x, y, FOCUS_RX, Math.max(FOCUS_RY * s, MIN_CLOSED_H / 2)), 0];
+    case CHILL: return [sdEllipse(x, y, DOT_R, Math.max(DOT_R * s, MIN_CLOSED_H / 2)), 0];
     case HAPPY: {
       const h = HAPPY_HALF_H * s;
       return [sdBezier(x, y, -HAPPY_HALF_W, h, 0, -3 * h, HAPPY_HALF_W, h) - HAPPY_STROKE, 0];

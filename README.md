@@ -42,13 +42,13 @@ as a toast ("you booped it").
 ### Protocol (ASCII lines, `\n` terminated, same on USB and BLE)
 | direction | line | notes |
 |---|---|---|
-| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad wow` (`wow` = surprised) |
+| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad wow chill` (`neutral` = focused, `wow` = surprised, `chill` = chilling) |
 | laptop → board | `K <screen> <eyes>` | colors as `RRGGBB`, e.g. `K 000000 EFC742`; sent on connect and live while you drag the color wheel. The board saves them |
 | laptop → board | `B` / `B2` | blink now / double blink (the preview is the blink clock) |
 | laptop → board | `M <left> <total>` | pomodoro: seconds left / session length; sent at start, on connect and every minute. `M 0 0` = stop |
 | laptop → board | `S` | show the pomodoro time left for 2 s |
 | laptop → board | `P` | ping |
-| board → laptop | `HELLO EyeBuddy 2` | on boot and in reply to `P` (v2 = has surprised + colors) |
+| board → laptop | `HELLO EyeBuddy 3` | on boot and in reply to `P` (v3 = tall-oval focused eyes + chilling, surprised, colors, pomodoro) |
 | board → laptop | `T touch` / `T release` | finger down / up (board smiles while touched + 2.5 s; during a pomodoro it shows the time left instead) |
 
 `lookX`, `lookY` are integers from −100 to 100, with 0,0 at the centre (and when no face is seen).
@@ -105,7 +105,7 @@ vendor/                           tasks-vision 0.10.35 bundle + wasm, face_landm
 
 ## Expression buttons
 Under the status: **Auto** (the camera decides) or one of **focused / welcome back / side-eye / disappointed /
-surprised**. Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
+surprised / chilling**. Focused (the default) is two tall ovals; chilling is the original round dots. Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
 **surprised** is button-only: the eyes blink, then grow from small wide ovals to huge tall ones with tiny pupils.
 
 ## Pomodoro

@@ -105,8 +105,10 @@ table.signals { width: 100%; border-collapse: collapse; font-size: 13px; font-va
 .expr-btns button[aria-pressed="true"] .muted { color: #ccc; }
 .ico { display: inline-block; width: 26px; height: 14px; position: relative; }
 .ico::before, .ico::after { content: ""; position: absolute; top: 50%; background: #e9b93a; }
-.ico-neutral::before, .ico-neutral::after { width: 7px; height: 7px; border-radius: 50%; transform: translateY(-50%); }
-.ico-neutral::before { left: 2px; } .ico-neutral::after { right: 2px; }
+.ico-neutral::before, .ico-neutral::after { width: 7px; height: 11px; border-radius: 50%; transform: translateY(-50%); }
+.ico-neutral::before { left: 3px; } .ico-neutral::after { right: 3px; }
+.ico-chill::before, .ico-chill::after { width: 7px; height: 7px; border-radius: 50%; transform: translateY(-50%); }
+.ico-chill::before { left: 2px; } .ico-chill::after { right: 2px; }
 .ico-happy::before, .ico-happy::after { width: 9px; height: 9px; background: none; border: 2.5px solid #e9b93a; border-bottom: 0; border-right: 0; transform: translateY(-30%) rotate(45deg); }
 .ico-happy::before { left: 1px; } .ico-happy::after { right: 1px; }
 .ico-side::before, .ico-side::after { width: 11px; height: 5.5px; border-radius: 0 0 6px 6px; transform: translateY(-50%); }
@@ -118,6 +120,7 @@ table.signals { width: 100%; border-collapse: collapse; font-size: 13px; font-va
 .ico-wow::before, .ico-wow::after { width: 9px; height: 13px; border-radius: 50%; transform: translateY(-50%); }
 .ico-wow::before { left: 2px; } .ico-wow::after { right: 2px; }
 #mood[data-mood="wow"] { color: var(--accent); }
+#mood[data-mood="chill"] { color: #3b82c4; }
 
 /* colors card */
 .colors-grid { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; margin-top: 8px; }

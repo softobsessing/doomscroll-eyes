@@ -41,7 +41,7 @@ function compare(name, e) {
   let k = 0;
   for (let t = 0; t <= 6000; t += 10) {
     e.setWander(false); e.setAutoBlink(false);
-    e.setMood(t < 800 ? 'neutral' : t < 3000 ? 'wow' : t < 3800 ? 'happy' : t < 4600 ? 'side' : t < 5400 ? 'sad' : 'wow');
+    e.setMood(t < 800 ? 'neutral' : t < 3000 ? 'wow' : t < 3800 ? 'happy' : t < 4600 ? 'side' : t < 5400 ? 'sad' : t < 5800 ? 'chill' : 'wow');
     e.setLook(Math.fround(0.5 * Math.sin(t / 600)), Math.fround(0.4 * Math.cos(t / 800)));
     if (t === 2000) e.setColors(0x14213D, 0xFF5FA2);
     if (t === 2400) e.blinkNow(t, false);

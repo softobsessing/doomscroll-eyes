@@ -10,7 +10,7 @@ static float toLook(int v) { return (v - SCREEN / 2) / (float)(SCREEN / 2); }
 
 void Brain::onLine(const char* line, uint32_t now) {
   if (line[0] == 'P' && (line[1] == 0 || line[1] == '\r')) {
-    if (emit_) emit_("HELLO EyeBuddy 2");
+    if (emit_) emit_("HELLO EyeBuddy 3");
     return;
   }
   unsigned left = 0, total = 0;
