@@ -192,11 +192,15 @@ eyeEngine.setColors(colors.face, colors.eye);
 function sendColors() {
   if (link?.connected) link.send(`K ${hex6(colors.face)} ${hex6(colors.eye)}`);
 }
+// the stage behind the preview glows in the eye color
+const showEyeColor = (c) => document.documentElement.style.setProperty('--eye', `#${hex6(c.eye)}`);
+showEyeColor(colors);
 new ColorPicker({
   colors,
   saved: loadJSON(LS.savedColors, []),
   onChange: (c) => {   // live while dragging: preview now, board right away
     colors = c;
+    showEyeColor(c);
     eyeEngine.setColors(c.face, c.eye);
     sendColors();
     saveJSON(LS.colors, c);
@@ -517,6 +521,8 @@ function renderPomodoro(force = false) {
   pomoShown = txt;
   $('pomoTime').textContent = txt;
   $('pomoTime').dataset.running = String(!!pomo);
+  const ring = $('pomoRing'), len = 2 * Math.PI * 52;   // empties as the session runs
+  ring.style.strokeDashoffset = String(pomo ? len * (1 - pomoLeft() / pomo.total) : 0);
   $('btnPomo').textContent = pomo ? 'Stop pomodoro' : `Start ${POMO_MINUTES}-min pomodoro`;
   $('btnPomo').setAttribute('aria-pressed', String(!!pomo));
 }
@@ -663,6 +669,7 @@ function scheduleRender() {
   requestAnimationFrame(() => { renderQueued = false; render(); });
 }
 
+const CLS_TEXT = { ON: 'on screen', AWAY: 'looking away' };
 function render() {
   const [mood] = currentFrame();
   if (state.demo) {
@@ -673,14 +680,16 @@ function render() {
     el.reasons.innerHTML = '&nbsp;';
   } else {
     const shown = state.cls === 'HOLD' ? state.effective : state.cls; // HOLD keeps the previous call
-    el.cls.textContent = shown || '—';
+    el.cls.textContent = CLS_TEXT[shown] || '—';
     el.cls.dataset.cls = shown || '';
     el.reasons.textContent = state.cls === 'HOLD' ? 'blink (holding)' : state.reasons.join(', ') || ' ';
   }
   el.mood.textContent = MOOD_LABELS[mood];
   el.mood.dataset.mood = mood;
-  el.moodWord.textContent = pomoAngry ? 'angry · you looked away during the pomodoro'
-    : state.manual ? `${mood} · held (press Auto to let the camera decide)` : mood;
+  el.moodWord.textContent = pomoAngry ? 'you looked away during the pomodoro'
+    : pomo && state.manual === 'neutral' ? 'pomodoro · studying with you'
+    : state.manual ? 'held · tap Auto to let the camera decide'
+    : state.demo || state.paused ? 'camera off' : 'auto · the camera decides';
   document.body.dataset.cls = state.cls || '';
   if (vision?.ready && !state.demo && !state.paused) {
     el.visionStatus.textContent = `face model ready (${vision.delegate}) · ${state.signals?.face ? 'face found' : 'no face'} · ${fmt(state.fps, 0)} fps`;

@@ -5,117 +5,129 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EyeBuddy</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%2216%22/%3E%3Cellipse cx=%2210.5%22 cy=%2216%22 rx=%223.5%22 ry=%225.5%22 fill=%22%23EFC742%22/%3E%3Cellipse cx=%2221.5%22 cy=%2216%22 rx=%223.5%22 ry=%225.5%22 fill=%22%23EFC742%22/%3E%3C/svg%3E">
 </head>
 <body>
   <header>
-    <h1>EyeBuddy</h1>
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><i></i><i></i></span>
+      <div>
+        <h1>EyeBuddy</h1>
+        <p class="tagline">a little screen buddy that keeps you off your phone</p>
+      </div>
+    </div>
     <div class="conn">
-      <button id="btnUsb" type="button">Connect USB</button>
-      <button id="btnUsbAny" type="button" class="link-btn" title="Pick any serial port (no Espressif filter)">Other port…</button>
-      <button id="btnBle" type="button">Connect Bluetooth</button>
       <span id="pill" class="pill" data-state="disconnected">not connected</span>
+      <button id="btnUsb" type="button" class="primary">Connect USB</button>
+      <button id="btnBle" type="button">Connect Bluetooth</button>
+      <button id="btnUsbAny" type="button" class="link-btn" title="Pick any serial port (no Espressif filter)">Other port…</button>
     </div>
   </header>
 
   <main>
-    <section class="card cam">
+    <div id="demo" class="demo" hidden>
+      <span class="demo-ico" aria-hidden="true">!</span>
+      <p id="demoMsg">Camera unavailable. Pick an expression below.</p>
+    </div>
+
+    <section class="card stage" aria-label="EyeBuddy's screen">
+      <div class="visor"><canvas id="screen" width="466" height="466" aria-label="Live preview of the board's eyes"></canvas></div>
+      <div class="feels">
+        <span class="feels-label">EyeBuddy is feeling</span>
+        <div id="mood" class="mood" data-mood="neutral">focused</div>
+        <div id="moodWord" class="mood-sub">Auto · the camera decides</div>
+      </div>
+      <p id="screenNote" class="stage-note">Live preview, drawn with the same code as the board. The eyes follow you.</p>
+    </section>
+
+    <section class="card you" aria-label="You">
+      <h2>You</h2>
       <div class="preview">
         <video id="video" playsinline muted></video>
         <canvas id="overlay"></canvas>
         <div id="camMsg" class="cam-msg">starting camera…</div>
       </div>
-      <label class="check"><input type="checkbox" id="chkOverlay"> landmark overlay</label>
-      <p class="privacy">Video stays on this computer. Face tracking runs locally in your browser; no frames are uploaded or stored.</p>
-      <p id="visionStatus" class="muted small">loading face model…</p>
-    </section>
-
-    <section class="card screen">
-      <div class="label">EyeBuddy's screen</div>
-      <div class="visor"><canvas id="screen" width="466" height="466" aria-label="Live preview of the board's eyes"></canvas></div>
-      <p id="screenNote" class="muted small">Live preview, drawn with the same code as the board. The eyes follow you.</p>
-    </section>
-
-    <section class="card status">
-      <div class="row">
-        <div>
-          <div class="label">you are</div>
-          <div id="cls" class="big" data-cls="">—</div>
-          <div id="reasons" class="muted small">&nbsp;</div>
+      <div class="you-stats">
+        <div class="stat">
+          <span class="stat-label">right now</span>
+          <div id="cls" class="stat-value cls" data-cls="">—</div>
+          <div id="reasons" class="stat-sub">&nbsp;</div>
         </div>
-        <div>
-          <div class="label">EyeBuddy feels</div>
-          <div id="mood" class="big" data-mood="neutral">focused</div>
-          <div id="moodWord" class="muted small">neutral</div>
-        </div>
-        <div>
-          <div class="label">caught today</div>
-          <div id="caught" class="big">0</div>
-          <div class="muted small">times it got disappointed</div>
+        <div class="stat">
+          <span class="stat-label">caught today</span>
+          <div id="caught" class="stat-value">0</div>
+          <div class="stat-sub">times it got disappointed</div>
         </div>
       </div>
       <div class="actions">
         <button id="btnCal" type="button">Calibrate</button>
         <button id="btnPause" type="button" aria-pressed="false">Pause tracking</button>
-        <span id="calMsg" class="muted"></span>
+        <label class="switch"><input type="checkbox" id="chkOverlay"><span></span>face dots</label>
       </div>
-
-      <div id="demo" class="demo" hidden>
-        <p id="demoMsg">Camera unavailable. Pick an expression below.</p>
-      </div>
-
-      <div class="expr">
-        <div class="label">expression</div>
-        <div class="expr-btns" id="exprBtns" role="group" aria-label="Expression">
-          <button type="button" data-expr="auto" aria-pressed="true">Auto <span class="muted small">(camera)</span></button>
-          <button type="button" data-expr="neutral" aria-pressed="false"><span class="ico ico-neutral"></span>focused</button>
-          <button type="button" data-expr="happy" aria-pressed="false"><span class="ico ico-happy"></span>welcome back</button>
-          <button type="button" data-expr="side" aria-pressed="false"><span class="ico ico-side"></span>side-eye</button>
-          <button type="button" data-expr="sad" aria-pressed="false"><span class="ico ico-sad"></span>disappointed</button>
-          <button type="button" data-expr="wow" aria-pressed="false"><span class="ico ico-wow"></span>surprised</button>
-          <button type="button" data-expr="chill" aria-pressed="false"><span class="ico ico-chill"></span>chilling</button>
-          <button type="button" data-expr="angry" aria-pressed="false"><span class="ico ico-angry"></span>angry</button>
-          <button type="button" data-expr="dizzy" aria-pressed="false"><span class="ico ico-dizzy"></span>dizzy</button>
-        </div>
-        <p id="exprNote" class="muted small">Auto: the camera decides. Press an expression to hold it on the board until you press Auto.</p>
-      </div>
-
-      <div class="pomo">
-        <div class="label">pomodoro</div>
-        <div class="pomo-row">
-          <button id="btnPomo" type="button" aria-pressed="false">Start 25-min pomodoro</button>
-          <span id="pomoTime" class="pomo-time" data-running="false">25:00</span>
-        </div>
-        <p class="muted small">Study mode: surprised eyes, 2 s of the timer, then focused eyes until time's up. Touch the board any time to see the time left.</p>
-      </div>
+      <span id="calMsg" class="stat-sub"></span>
+      <p class="privacy"><span aria-hidden="true">🔒</span> Video never leaves this computer: face tracking runs in your browser, nothing is uploaded or stored.</p>
+      <p id="visionStatus" class="fine">loading face model…</p>
     </section>
 
-    <section class="card colors">
-      <div class="label">colors</div>
+    <section class="card expr" aria-label="Expressions">
+      <h2>Expressions</h2>
+      <div class="expr-btns" id="exprBtns" role="group" aria-label="Expression">
+        <button type="button" data-expr="auto" class="expr-auto" aria-pressed="true"><span class="mini mini-auto">AUTO</span><span class="auto-text"><b>Auto</b><span>the camera picks the mood for you</span></span></button>
+        <button type="button" data-expr="neutral" aria-pressed="false"><span class="mini"><span class="ico ico-neutral"></span></span>focused</button>
+        <button type="button" data-expr="happy" aria-pressed="false"><span class="mini"><span class="ico ico-happy"></span></span>welcome back</button>
+        <button type="button" data-expr="side" aria-pressed="false"><span class="mini"><span class="ico ico-side"></span></span>side-eye</button>
+        <button type="button" data-expr="sad" aria-pressed="false"><span class="mini"><span class="ico ico-sad"></span></span>disappointed</button>
+        <button type="button" data-expr="wow" aria-pressed="false"><span class="mini"><span class="ico ico-wow"></span></span>surprised</button>
+        <button type="button" data-expr="chill" aria-pressed="false"><span class="mini"><span class="ico ico-chill"></span></span>chilling</button>
+        <button type="button" data-expr="angry" aria-pressed="false"><span class="mini"><span class="ico ico-angry"></span></span>angry</button>
+        <button type="button" data-expr="dizzy" aria-pressed="false"><span class="mini"><span class="ico ico-dizzy"></span></span>dizzy</button>
+      </div>
+      <p id="exprNote" class="fine">Auto lets the camera decide. Tap an expression to hold it on the board; tap Auto to go back.</p>
+    </section>
+
+    <section class="card pomo" aria-label="Pomodoro">
+      <h2>Pomodoro</h2>
+      <div class="pomo-dial">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="pomo-track" cx="60" cy="60" r="52"></circle>
+          <circle id="pomoRing" class="pomo-ring" cx="60" cy="60" r="52"></circle>
+        </svg>
+        <div class="pomo-center">
+          <span id="pomoTime" class="pomo-time" data-running="false">25:00</span>
+          <span class="pomo-unit">study time</span>
+        </div>
+      </div>
+      <button id="btnPomo" type="button" class="primary wide" aria-pressed="false">Start 25-min pomodoro</button>
+      <p class="fine">EyeBuddy looks surprised, shows the timer, then stays focused with you. Look away and it gets angry. Touch the board to see the time left.</p>
+    </section>
+
+    <section class="card colors" aria-label="Colors">
+      <h2>Colors</h2>
       <div class="colors-grid">
         <div class="wheel-wrap">
           <canvas id="wheel" width="240" height="240" aria-label="Color wheel: drag to pick a color"></canvas>
-          <label class="bright">brightness <input id="bright" type="range" min="0" max="100" value="100"></label>
+          <label class="bright"><span>brightness</span><input id="bright" type="range" min="0" max="100" value="100"></label>
         </div>
         <div class="color-side">
+          <div class="field-label">What are you coloring?</div>
           <div class="color-target" id="colorTarget" role="group" aria-label="What to color">
             <button type="button" data-target="eye" aria-pressed="true"><span class="sw" id="swEye"></span>Eyes</button>
             <button type="button" data-target="face" aria-pressed="false"><span class="sw" id="swFace"></span>Screen</button>
           </div>
-          <label class="hex">hex <input id="hex" type="text" maxlength="7" spellcheck="false" autocomplete="off"></label>
+          <label class="hex"><span class="field-label">Hex code</span><input id="hex" type="text" maxlength="7" spellcheck="false" autocomplete="off"></label>
           <div class="actions">
-            <button id="btnSaveColors" type="button">Save these colors</button>
+            <button id="btnSaveColors" type="button" class="primary">Save these colors</button>
             <button id="btnResetColors" type="button" class="link-btn">Reset to yellow on black</button>
           </div>
-          <div class="label">saved</div>
+          <div class="field-label">Saved</div>
           <div id="savedColors" class="saved"></div>
-          <p class="muted small">Changes show on the preview and the board right away. The board remembers the last colors, even after a restart.</p>
+          <p class="fine">Changes show on the preview and the board right away. The board remembers the last colors, even after a restart.</p>
         </div>
       </div>
     </section>
 
     <details class="card tuning" id="tuning">
-      <summary>Tuning</summary>
+      <summary>Advanced tuning</summary>
       <div class="tuning-grid">
         <div>
           <h3>Thresholds</h3>
@@ -132,9 +144,9 @@
             <thead><tr><th>signal</th><th>now</th><th>baseline</th><th>Δ</th><th>limit</th></tr></thead>
             <tbody id="sigBody"></tbody>
           </table>
-          <p class="muted small">Pitch: up = +, head tilted down = −. Yaw: + = turned to your left. Gaze side: + = eyes to your left.
+          <p class="fine">Pitch: up = +, head tilted down = −. Yaw: + = turned to your left. Gaze side: + = eyes to your left.
             A row turns red when it alone would count as "away".</p>
-          <p id="baselineInfo" class="muted small"></p>
+          <p id="baselineInfo" class="fine"></p>
         </div>
       </div>
     </details>
