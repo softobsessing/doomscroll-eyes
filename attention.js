@@ -11,6 +11,8 @@ export const MOOD_LABELS = {
   sad: 'disappointed',
   wow: 'surprised',   // button only (the camera never picks it); short name keeps E lines in one BLE packet
   chill: 'chilling',  // button only: the original round-dot eyes
+  angry: 'angry',     // button only: lids slide down into a glare, then a squint
+  dizzy: 'dizzy',     // button only, plays once: wobble -> swirls for 1 s -> back to focused
 };
 
 export const DEFAULT_THRESHOLDS = {

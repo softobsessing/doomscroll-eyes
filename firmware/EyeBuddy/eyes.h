@@ -8,10 +8,11 @@
 
 namespace eyes {
 
-// NEUTRAL = "focused" (tall ovals, the default), WOW = "surprised", CHILL = "chilling" (round dots).
+// NEUTRAL = "focused" (tall ovals, the default), WOW = "surprised", CHILL = "chilling" (round dots),
+// ANGRY and DIZZY evolve out of the focused ovals (DIZZY ends in swirls, then melts back into focused).
 // Short names so the longest E line still fits one Bluetooth packet.
-enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, WOW, CHILL, MOOD_COUNT };
-const char* moodName(Mood m);              // "neutral", "happy", "side", "sad", "wow", "chill"
+enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, WOW, CHILL, ANGRY, DIZZY, MOOD_COUNT };
+const char* moodName(Mood m);              // "neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy"
 bool parseMood(const char* s, Mood* out);
 
 constexpr int SCREEN = 466;
@@ -32,6 +33,8 @@ struct Eye {
   float side;       // -1 = left eye on screen, +1 = right eye
   // surprised only: the oval (half sizes) and its tiny pupil (radius, offset toward the nose, look shift)
   float rx, ry, pupilR, pupilIn, pupilDX, pupilDY;
+  // angry / dizzy: tilt, slanted lid (y = lidC + lidK * x toward the nose), corner rounding, swirl blend + spin
+  float rot, cosr, sinr, lidC, lidK, round, swirl, spin;
   int x0, y0, x1, y1;  // bounding box incl. anti-aliasing, inclusive
 };
 
@@ -104,7 +107,8 @@ class Engine {
   float faceR_ = 0, faceG_ = 0, faceB_ = 0, eyeR_ = 29, eyeG_ = 49, eyeB_ = 8;
   uint16_t face565_ = 0;
 
-  uint32_t moodSince_ = 0;   // when the current mood took over (drives the surprised growth)
+  uint32_t moodSince_ = 0;   // when the current mood took over (drives the surprised/angry/dizzy animations)
+  bool dizzyRunning(uint32_t now) const;
 
   // pomodoro + timer screen
   bool pomoActive_ = false, timerShown_ = false;

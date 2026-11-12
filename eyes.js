@@ -2,9 +2,10 @@
 // so the on-screen preview shows exactly what the round AMOLED shows. If you change the shapes or
 // timings in eyes.cpp, change them here too (test/eyes_port.test.mjs compares the two).
 
-// neutral = focused (tall ovals, the default), wow = surprised, chill = chilling (round dots)
-export const MOODS = ['neutral', 'happy', 'side', 'sad', 'wow', 'chill'];
-const NEUTRAL = 0, HAPPY = 1, SIDE = 2, SAD = 3, WOW = 4, CHILL = 5;
+// neutral = focused (tall ovals, the default), wow = surprised, chill = chilling (round dots),
+// angry / dizzy evolve out of the focused ovals (dizzy ends in swirls, then melts back into focused)
+export const MOODS = ['neutral', 'happy', 'side', 'sad', 'wow', 'chill', 'angry', 'dizzy'];
+const NEUTRAL = 0, HAPPY = 1, SIDE = 2, SAD = 3, WOW = 4, CHILL = 5, ANGRY = 6, DIZZY = 7;
 export const DEFAULT_EYE_COLOR = 0xEFC742, DEFAULT_FACE_COLOR = 0x000000;
 const CREASE_DARKEN = 0.66;
 export const SCREEN = 466;
@@ -17,7 +18,63 @@ const STYLES = [
   [100, 30, 15, 70, 48],
   [105, 25, 15, 101, 140],   // WOW: spacing/size animate, see WOW_KEYS
   [100, 70, 55, 36, 36],     // CHILL: the original round dots
+  [98, 40, 30, 72, 80],      // ANGRY: shape animates, see ANGRY_KEYS
+  [103, 15, 10, 80, 80],     // DIZZY: shape animates, see DIZZY_KEYS
 ];
+
+// ---- smooth keyframe curves for angry + dizzy (same as eyes.cpp) ----
+function smoothKeys(keys, field, t) {
+  const n = keys.length;
+  if (t <= keys[0][0]) return keys[0][field];
+  if (t >= keys[n - 1][0]) return keys[n - 1][field];
+  let i = 0;
+  while (t >= keys[i + 1][0]) i++;
+  const tangent = (k) => {
+    if (k <= 0 || k >= n - 1) return 0;
+    const a = keys[k][field] - keys[k - 1][field], b = keys[k + 1][field] - keys[k][field];
+    if (a * b <= 0) return 0;
+    return (keys[k + 1][field] - keys[k - 1][field]) / (keys[k + 1][0] - keys[k - 1][0]);
+  };
+  const h = keys[i + 1][0] - keys[i][0], u = (t - keys[i][0]) / h;
+  const u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * keys[i][field] + (u3 - 2 * u2 + u) * h * tangent(i) +
+    (-2 * u3 + 3 * u2) * keys[i + 1][field] + (u3 - u2) * h * tangent(i + 1);
+}
+// t (s), spacing, centre y, rx, ry, lid y at the eye centre, lid slope toward the nose, corner rounding
+const ANGRY_KEYS = [
+  [0.00, 103, 0, 55, 74, -115.0, 0.55, 0],
+  [0.40, 98, -11, 72, 69, -28.0, 0.55, 8],
+  [0.85, 98, -12, 56, 54, -13.5, 0.60, 8],
+];
+// t (s), tilt (deg), spacing, centre x, centre y, rx, ry, swirl 0..1
+const DIZZY_KEYS = [
+  [0.00, 0, 103, 0, 0, 55, 74, 0],
+  [0.35, 36, 100, -3, -9, 58, 78, 0],
+  [0.75, -41, 104, 32, 27, 58, 78, 0],
+  [1.15, 47, 107, -1, -1, 64, 70, 0],
+  [1.55, -9, 100, 0, 0, 74, 41, 0],
+  [1.90, 0, 104, 0, -2, 60, 60, 1],
+  [2.90, 0, 104, 0, -2, 60, 60, 1],
+  [3.30, 0, 103, 0, 0, 55, 74, 0],
+];
+export const DIZZY_TOTAL_MS = 3300;
+const SWIRL_R = 64, SWIRL_TURNS = 2.75, SWIRL_HALF = 5.5, SWIRL_MIN = 0.6, SWIRL_SPIN = 12.566;
+const TWO_PI = 6.2831853;
+function sdSwirl(x, y, spin) {
+  const thetaMax = SWIRL_TURNS * TWO_PI, b = SWIRL_R / thetaMax;
+  const r = len(x, y);
+  let phi = (Math.atan2(y, x) - spin) % TWO_PI;
+  if (phi < 0) phi += TWO_PI;
+  const n = Math.floor((r / b - phi) / TWO_PI + 0.5);
+  let best = 1e9;
+  for (let k = -1; k <= 1; k++) {
+    const th = phi + TWO_PI * (n + k);
+    const tc = th < SWIRL_MIN ? SWIRL_MIN : th > thetaMax ? thetaMax : th;
+    const dr = r - b * tc, da = (th - tc) * b * tc;
+    best = Math.min(best, Math.sqrt(dr * dr + da * da));
+  }
+  return best - SWIRL_HALF;
+}
 
 // surprised: the eyes grow through the four reference frames, smallest to biggest (same table as eyes.cpp)
 // t (s), spacing, rx, ry, pupil r, pupil toward nose
@@ -124,6 +181,20 @@ function shapeDistance(e, x, y) {
       return [d, clamp01(0.5 - dc) * ends * clamp01((s - 0.5) / 0.3)];
     }
     case WOW: return [sdEllipse(x, y, e.rx, Math.max(e.ry * s, MIN_CLOSED_H / 2)), 0];
+    case ANGRY: {
+      const sq = Math.max(s, MIN_CLOSED_H / (2 * e.ry));
+      const yy = y / sq, xi = x * -side;
+      const R = e.round, norm = Math.sqrt(1 + e.lidK * e.lidK);
+      const body = sdEllipse(x, yy, e.rx - R, e.ry - R);
+      const lid = (e.lidC + R * norm + e.lidK * xi - yy) / norm;
+      return [(Math.max(body, lid) - R) * sq, 0];
+    }
+    case DIZZY: {
+      const rx = x * e.cosr + y * e.sinr, ry = -x * e.sinr + y * e.cosr;
+      let d = e.swirl < 1 ? sdEllipse(rx, ry, e.rx, e.ry) : 0;
+      if (e.swirl > 0) d = d * (1 - e.swirl) + sdSwirl(x, y, e.spin) * e.swirl;
+      return [d, 0];
+    }
   }
   return [1e9, 0];
 }
@@ -205,8 +276,9 @@ export class Engine {
   setLook(x, y) { this.lookTX = Math.max(-1, Math.min(1, x)); this.lookTY = Math.max(-1, Math.min(1, y)); }
   setWander(on) { this.wander = on; }
   setAutoBlink(on) { this.autoBlink = on; }
+  dizzyRunning(now) { return this.mood === DIZZY && (((now >>> 0) - this.moodSince) >>> 0) < DIZZY_TOTAL_MS; }
   blinkNow(now, twice) {
-    if (this.blinkPhase || this.target !== this.mood) return false;
+    if (this.blinkPhase || this.target !== this.mood || this.dizzyRunning(now)) return false;
     this.startBlink(now >>> 0); this.doubleBlink = !!twice; return true;
   }
   takeBlinkEvent() { const e = this.blinkEvent; this.blinkEvent = null; return e; }
@@ -244,7 +316,13 @@ export class Engine {
     if (dt > 0.1) dt = 0.1;
     this.lastMs = now;
 
-    if (!this.blinkPhase && (this.target !== this.mood || (this.autoBlink && reached(now, this.nextBlink)))) {
+    if (!this.blinkPhase && this.target !== this.mood) {
+      const fromFocus = this.mood === NEUTRAL && (this.target === ANGRY || this.target === DIZZY);
+      const dizzyDone = this.mood === DIZZY && !this.dizzyRunning(now) && this.target === NEUTRAL;
+      if (fromFocus || dizzyDone) { this.mood = this.target; this.moodSince = now; }
+    }
+    const quiet = this.dizzyRunning(now);
+    if (!this.blinkPhase && (this.target !== this.mood || (this.autoBlink && !quiet && reached(now, this.nextBlink)))) {
       const natural = this.target === this.mood;
       this.startBlink(now);
       this.doubleBlink = natural && this.randf(0, 1) < 0.15;
@@ -275,7 +353,28 @@ export class Engine {
     this.lookY += (ty - this.lookY) * a;
 
     const breathe = 1 + 0.018 * Math.sin(now * (6.2831853 / 4200));
-    let [spacing, gazeX, gazeY, halfW, halfH] = STYLES[this.mood];
+    let shape = this.mood;
+    if (this.mood === DIZZY && !this.dizzyRunning(now)) shape = NEUTRAL;
+    let [spacing, gazeX, gazeY, halfW, halfH] = STYLES[shape];
+    const animT = ((now - this.moodSince) >>> 0) / 1000;
+    let pairRot = 0, offX = 0, offY = 0, eyeCy = 0, rx = 0, ry = 0, lidC = 0, lidK = 0, rnd = 0, swirl = 0;
+    if (shape === ANGRY) {
+      const K = ANGRY_KEYS;
+      spacing = smoothKeys(K, 1, animT); eyeCy = smoothKeys(K, 2, animT);
+      rx = smoothKeys(K, 3, animT); ry = smoothKeys(K, 4, animT);
+      lidC = smoothKeys(K, 5, animT); lidK = smoothKeys(K, 6, animT); rnd = smoothKeys(K, 7, animT);
+      halfW = rx; halfH = ry + Math.abs(eyeCy);
+    } else if (shape === DIZZY) {
+      const K = DIZZY_KEYS;
+      pairRot = smoothKeys(K, 1, animT) * (3.14159265 / 180);
+      spacing = smoothKeys(K, 2, animT); offX = smoothKeys(K, 3, animT); offY = smoothKeys(K, 4, animT);
+      rx = smoothKeys(K, 5, animT); ry = smoothKeys(K, 6, animT);
+      swirl = clamp01(smoothKeys(K, 7, animT));
+      const c = Math.cos(pairRot), sn = Math.sin(pairRot);
+      const hx = Math.sqrt(rx * c * rx * c + ry * sn * ry * sn), hy = Math.sqrt(rx * sn * rx * sn + ry * c * ry * c);
+      const sw = swirl > 0 ? SWIRL_R + SWIRL_HALF : 0;
+      halfW = Math.max(hx, sw); halfH = Math.max(hy, sw);
+    }
     let wk = { spacing: 0, rx: 0, ry: 0, pupilR: 0, pupilIn: 0 };
     if (this.mood === WOW) {
       wk = wowAt(((now - this.moodSince) >>> 0) / 1000);
@@ -283,13 +382,21 @@ export class Engine {
     }
     for (let i = 0; i < 2; i++) {
       const e = this.eyes[i];
-      e.shape = this.mood;
+      e.shape = shape;
       e.side = i === 0 ? -1 : 1;
       e.cx = CX + e.side * spacing + this.lookX * gazeX;
       e.cy = CY + this.lookY * gazeY;
+      e.rot = pairRot; e.cosr = Math.cos(pairRot); e.sinr = Math.sin(pairRot);
+      e.lidC = lidC; e.lidK = lidK; e.round = rnd; e.swirl = swirl;
+      e.spin = animT * SWIRL_SPIN;
+      if (shape === DIZZY) {
+        e.cx = CX + offX + e.side * spacing * e.cosr + this.lookX * gazeX;
+        e.cy = CY + offY + e.side * spacing * e.sinr + this.lookY * gazeY;
+      }
+      if (shape === ANGRY) e.cy += eyeCy;
       e.scale = breathe;
       e.squash = open;
-      e.rx = wk.rx; e.ry = wk.ry;
+      e.rx = shape === WOW ? wk.rx : rx; e.ry = shape === WOW ? wk.ry : ry;
       e.pupilR = wk.pupilR; e.pupilIn = wk.pupilIn;
       e.pupilDX = this.lookX * wk.rx * 0.25;
       e.pupilDY = this.lookY * wk.ry * 0.2;

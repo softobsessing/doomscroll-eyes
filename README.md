@@ -42,7 +42,7 @@ as a toast ("you booped it").
 ### Protocol (ASCII lines, `\n` terminated, same on USB and BLE)
 | direction | line | notes |
 |---|---|---|
-| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad wow chill` (`neutral` = focused, `wow` = surprised, `chill` = chilling) |
+| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad wow chill angry dizzy` (`neutral` = focused, `wow` = surprised, `chill` = chilling) |
 | laptop → board | `K <screen> <eyes>` | colors as `RRGGBB`, e.g. `K 000000 EFC742`; sent on connect and live while you drag the color wheel. The board saves them |
 | laptop → board | `B` / `B2` | blink now / double blink (the preview is the blink clock) |
 | laptop → board | `M <left> <total>` | pomodoro: seconds left / session length; sent at start, on connect and every minute. `M 0 0` = stop |
@@ -105,7 +105,10 @@ vendor/                           tasks-vision 0.10.35 bundle + wasm, face_landm
 
 ## Expression buttons
 Under the status: **Auto** (the camera decides) or one of **focused / welcome back / side-eye / disappointed /
-surprised / chilling**. Focused (the default) is two tall ovals; chilling is the original round dots. Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
+surprised / chilling / angry / dizzy**. Focused (the default) is two tall ovals; chilling is the original round dots.
+**angry** grows out of the focused ovals: the lids slide down into a glare, then squeeze into a squint and hold.
+**dizzy** plays once: the eyes wobble around the face, flatten, spin as swirls for 1 s, then melt back into the
+focused ovals and your previous expression comes back. Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
 **surprised** is button-only: the eyes blink, then grow from small wide ovals to huge tall ones with tiny pupils.
 
 ## Pomodoro

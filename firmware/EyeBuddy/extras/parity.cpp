@@ -66,6 +66,18 @@ int main(int argc, char **argv) {
       for (uint32_t s : pshots) if (s == t) { dump(e, dir + "/pomo_" + std::to_string(k++) + ".bin"); n++; }
     }
   }
+  // ---- angry and dizzy evolving out of the focused ovals (and dizzy melting back) ----
+  {
+    Engine e; e.begin(9); e.setWander(false); e.setAutoBlink(false);
+    const uint32_t eshots[] = { 600, 700, 800, 900, 1100, 1500, 2700, 2950, 3300, 3700, 4200, 4500, 4800, 5300, 5800, 6000, 6400, 7200 };
+    int k = 0;
+    for (uint32_t t = 0; t <= 7300; t += 10) {
+      e.setMood(t < 500 ? NEUTRAL : t < 2000 ? ANGRY : t < 2600 ? NEUTRAL : t < 7000 ? DIZZY : NEUTRAL);
+      e.setLook((float)(0.3 * sin(t / 500.0)), (float)(0.2 * cos(t / 700.0)));
+      e.update(t);
+      for (uint32_t s : eshots) if (s == t) { dump(e, dir + "/evolve_" + std::to_string(k++) + ".bin"); n++; }
+    }
+  }
   printf("wrote %d frames to %s\n", n, dir.c_str());
   return 0;
 }

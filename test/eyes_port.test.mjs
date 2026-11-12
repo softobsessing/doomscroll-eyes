@@ -76,6 +76,19 @@ function compare(name, e) {
     if (PSHOTS.includes(t)) compare(`pomo_${k++}`, e);
   }
 }
+// ---- angry and dizzy evolving out of the focused ovals (and dizzy melting back) ----
+{
+  const e = new Engine(9);
+  e.setWander(false); e.setAutoBlink(false);
+  const ESHOTS = [600, 700, 800, 900, 1100, 1500, 2700, 2950, 3300, 3700, 4200, 4500, 4800, 5300, 5800, 6000, 6400, 7200];
+  let k = 0;
+  for (let t = 0; t <= 7300; t += 10) {
+    e.setMood(t < 500 ? 'neutral' : t < 2000 ? 'angry' : t < 2600 ? 'neutral' : t < 7000 ? 'dizzy' : 'neutral');
+    e.setLook(Math.fround(0.3 * Math.sin(t / 500)), Math.fround(0.2 * Math.cos(t / 700)));
+    e.update(t);
+    if (ESHOTS.includes(t)) compare(`evolve_${k++}`, e);
+  }
+}
 console.log(`\n${frames} frames compared; worst frame has ${worst} pixels off by more than a rounding step`);
 assert.ok(worst <= 40, 'eyes.js no longer matches eyes.cpp');
 console.log('ok: the website preview matches the board');

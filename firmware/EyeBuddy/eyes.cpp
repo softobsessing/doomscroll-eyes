@@ -4,7 +4,7 @@
 
 namespace eyes {
 
-static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad", "wow", "chill"};
+static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy"};
 const char* moodName(Mood m) { return m < MOOD_COUNT ? NAMES[m] : "?"; }
 bool parseMood(const char* s, Mood* out) {
   for (int i = 0; i < MOOD_COUNT; i++)
@@ -25,7 +25,55 @@ static const Style STYLES[MOOD_COUNT] = {
     /* SAD    heavy lids */ {100, 30, 15, 70, 48},
     /* WOW    surprised  */ {105, 25, 15, 101, 140},   // spacing/size animate, see WOW_KEYS
     /* CHILL  dots       */ {100, 70, 55, 36, 36},     // "chilling": the original round dots
+    /* ANGRY  glare      */ {98, 40, 30, 72, 80},      // shape animates, see ANGRY_KEYS
+    /* DIZZY  wobble     */ {103, 15, 10, 80, 80},     // shape animates, see DIZZY_KEYS
 };
+
+// ---- smooth keyframe curves for angry + dizzy ----
+// Cubic Hermite through the keys with time-aware tangents, flattened at peaks and holds, so a value
+// eases into each extreme (like a pendulum) and never overshoots.
+template <int F>
+static float smoothKeys(const float (*keys)[F], int n, int field, float t) {
+  if (t <= keys[0][0]) return keys[0][field];
+  if (t >= keys[n - 1][0]) return keys[n - 1][field];
+  int i = 0;
+  while (t >= keys[i + 1][0]) i++;
+  auto tangent = [&](int k) -> float {
+    if (k <= 0 || k >= n - 1) return 0;
+    float a = keys[k][field] - keys[k - 1][field], b = keys[k + 1][field] - keys[k][field];
+    if (a * b <= 0) return 0;   // a peak, a dip or a hold: arrive with zero speed
+    return (keys[k + 1][field] - keys[k - 1][field]) / (keys[k + 1][0] - keys[k - 1][0]);
+  };
+  float h = keys[i + 1][0] - keys[i][0], u = (t - keys[i][0]) / h;
+  float u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * keys[i][field] + (u3 - 2 * u2 + u) * h * tangent(i) +
+         (-2 * u3 + 3 * u2) * keys[i + 1][field] + (u3 - u2) * h * tangent(i + 1);
+}
+
+// angry: the lids slide down over the focused ovals (A1), then squeeze into a squint (A2) and hold.
+// t (s), spacing, centre y, rx, ry, lid y at the eye centre, lid slope toward the nose, corner rounding
+static const float ANGRY_KEYS[][8] = {
+    {0.00f, 103,   0, 55, 74, -115.0f, 0.55f, 0},   // = the focused ovals (lid above the eye)
+    {0.40f,  98, -11, 72, 69,  -28.0f, 0.55f, 8},   // big glare
+    {0.85f,  98, -12, 56, 54,  -13.5f, 0.60f, 8},   // narrowed squint (holds)
+};
+constexpr int ANGRY_N = sizeof(ANGRY_KEYS) / sizeof(ANGRY_KEYS[0]);
+
+// dizzy: the pair of eyes rocks around the face, flattens, becomes spinning swirls for 1 s, then
+// melts back into the focused ovals.  t (s), tilt (deg), spacing, centre x, centre y, rx, ry, swirl 0..1
+static const float DIZZY_KEYS[][8] = {
+    {0.00f,   0, 103,  0,  0, 55, 74, 0},   // = the focused ovals
+    {0.35f,  36, 100, -3, -9, 58, 78, 0},
+    {0.75f, -41, 104, 32, 27, 58, 78, 0},
+    {1.15f,  47, 107, -1, -1, 64, 70, 0},
+    {1.55f,  -9, 100,  0,  0, 74, 41, 0},   // flattening out
+    {1.90f,   0, 104,  0, -2, 60, 60, 1},   // swirls...
+    {2.90f,   0, 104,  0, -2, 60, 60, 1},   // ...spinning for 1 s
+    {3.30f,   0, 103,  0,  0, 55, 74, 0},   // back to the focused ovals
+};
+constexpr int DIZZY_N = sizeof(DIZZY_KEYS) / sizeof(DIZZY_KEYS[0]);
+constexpr uint32_t DIZZY_TOTAL_MS = 3300;
+constexpr float SWIRL_R = 64, SWIRL_TURNS = 2.75f, SWIRL_HALF = 5.5f, SWIRL_MIN = 0.6f, SWIRL_SPIN = 12.566f;   // rad/s (2 turns/s)
 
 // ---- surprised: the eyes grow through the four reference frames (logical px), smallest to biggest ----
 struct WowKey { float t, spacing, rx, ry, pupilR, pupilIn; };
@@ -70,6 +118,7 @@ constexpr float SAD_RX = 70, SAD_RY = 66, SAD_H = 76;       // boat shape under 
 constexpr float SAD_TILT = 7.0f * 3.14159265f / 180.0f;     // outer corners droop
 constexpr float CREASE_DROP = 17, CREASE_R = 130, CREASE_HALF = 2.2f, CREASE_HALF_LEN = 50;
 constexpr float MIN_CLOSED_H = 4;                           // a closed eye is a 4 px line
+constexpr float TWO_PI = 6.2831853f;
 
 static const float CX = SCREEN / 2.0f, CY = SCREEN / 2.0f;
 
@@ -120,6 +169,23 @@ static float sdBezier(float px, float py, float ax, float ay, float bx, float by
   return sqrtf(fminf(dist2(t0), dist2(t1)));
 }
 
+// Distance to an Archimedean spiral (r = b * theta) drawn with a thick stroke, rotated by `spin`.
+static float sdSwirl(float x, float y, float spin) {
+  const float thetaMax = SWIRL_TURNS * TWO_PI, b = SWIRL_R / thetaMax;
+  float r = len(x, y);
+  float phi = fmodf(atan2f(y, x) - spin, TWO_PI);
+  if (phi < 0) phi += TWO_PI;
+  float n = floorf((r / b - phi) / TWO_PI + 0.5f);   // nearest turn
+  float best = 1e9f;
+  for (int k = -1; k <= 1; k++) {
+    float th = phi + TWO_PI * (n + k);
+    float tc = th < SWIRL_MIN ? SWIRL_MIN : (th > thetaMax ? thetaMax : th);
+    float dr = r - b * tc, da = (th - tc) * b * tc;   // past the ends: round caps
+    best = fminf(best, sqrtf(dr * dr + da * da));
+  }
+  return best - SWIRL_HALF;
+}
+
 // Distance for one eye shape around its visible centre. `crease` gets the lid-line coverage (sad only).
 static float shapeDistance(const Eye& e, float x, float y, float* crease) {
   *crease = 0;
@@ -162,6 +228,20 @@ static float shapeDistance(const Eye& e, float x, float y, float* crease) {
     case WOW: {    // big oval (the pupil is cut out in shade())
       float ry = fmaxf(e.ry * s, MIN_CLOSED_H / 2);
       return sdEllipse(x, y, e.rx, ry);
+    }
+    case ANGRY: {  // oval under a slanted lid that drops toward the nose; corners rounded
+      float sq = fmaxf(s, MIN_CLOSED_H / (2 * e.ry));   // blink: squash vertically
+      float yy = y / sq, xi = x * -side;                // xi > 0 toward the nose
+      float R = e.round, norm = sqrtf(1 + e.lidK * e.lidK);
+      float body = sdEllipse(x, yy, e.rx - R, e.ry - R);
+      float lid = (e.lidC + R * norm + e.lidK * xi - yy) / norm;   // > 0 above the lid
+      return (fmaxf(body, lid) - R) * sq;
+    }
+    case DIZZY: {  // tilted oval, blending into a spinning swirl
+      float rx = x * e.cosr + y * e.sinr, ry = -x * e.sinr + y * e.cosr;
+      float d = e.swirl < 1 ? sdEllipse(rx, ry, e.rx, e.ry) : 0;
+      if (e.swirl > 0) d = d * (1 - e.swirl) + sdSwirl(x, y, e.spin) * e.swirl;
+      return d;
     }
     default:
       return 1e9f;
@@ -303,8 +383,10 @@ float Engine::blinkOpenness(uint32_t now) {
   return 1 - (1 - u) * (1 - u);
 }
 
+bool Engine::dizzyRunning(uint32_t now) const { return mood_ == DIZZY && (uint32_t)(now - moodSince_) < DIZZY_TOTAL_MS; }
+
 bool Engine::blinkNow(uint32_t now, bool twice) {
-  if (blinkPhase_ || target_ != mood_) return false;
+  if (blinkPhase_ || target_ != mood_ || dizzyRunning(now)) return false;   // no blinking mid-wobble
   startBlink(now);
   doubleBlink_ = twice;
   return true;
@@ -349,8 +431,16 @@ void Engine::update(uint32_t now) {
   if (dt > 0.1f) dt = 0.1f;
   lastMs_ = now;
 
+  // Angry and dizzy grow straight out of the focused ovals (no blink), and a finished dizzy (which already
+  // looks like the focused ovals) hands back to focused without one either.
+  if (!blinkPhase_ && target_ != mood_) {
+    bool fromFocus = mood_ == NEUTRAL && (target_ == ANGRY || target_ == DIZZY);
+    bool dizzyDone = mood_ == DIZZY && !dizzyRunning(now) && target_ == NEUTRAL;
+    if (fromFocus || dizzyDone) { mood_ = target_; moodSince_ = now; }
+  }
   // blinking: random 2-6 s, sometimes a double blink; a mood change forces a blink right away
-  if (!blinkPhase_ && (target_ != mood_ || (autoBlink_ && reached(now, nextBlink_)))) {
+  bool quiet = dizzyRunning(now);   // no random blinks while dizzy
+  if (!blinkPhase_ && (target_ != mood_ || (autoBlink_ && !quiet && reached(now, nextBlink_)))) {
     bool natural = target_ == mood_;
     startBlink(now);
     doubleBlink_ = natural && randf(0, 1) < 0.15f;
@@ -381,8 +471,35 @@ void Engine::update(uint32_t now) {
   lookY_ += (ty - lookY_) * a;
 
   float breathe = 1 + 0.018f * sinf(now * (6.2831853f / 4200.0f));
-  const Style& st = STYLES[mood_];
+  Mood shape = mood_;
+  if (mood_ == DIZZY && !dizzyRunning(now)) shape = NEUTRAL;   // dizzy is over: plain focused ovals
+  const Style& st = STYLES[shape];
   float spacing = st.spacing, halfW = st.halfW, halfH = st.halfH;
+  float animT = (now - moodSince_) / 1000.0f;
+  // angry / dizzy shape this frame
+  float pairRot = 0, offX = 0, offY = 0, eyeCy = 0, rx = 0, ry = 0, lidC = 0, lidK = 0, rnd = 0, swirl = 0;
+  if (shape == ANGRY) {
+    spacing = smoothKeys(ANGRY_KEYS, ANGRY_N, 1, animT);
+    eyeCy = smoothKeys(ANGRY_KEYS, ANGRY_N, 2, animT);
+    rx = smoothKeys(ANGRY_KEYS, ANGRY_N, 3, animT);
+    ry = smoothKeys(ANGRY_KEYS, ANGRY_N, 4, animT);
+    lidC = smoothKeys(ANGRY_KEYS, ANGRY_N, 5, animT);
+    lidK = smoothKeys(ANGRY_KEYS, ANGRY_N, 6, animT);
+    rnd = smoothKeys(ANGRY_KEYS, ANGRY_N, 7, animT);
+    halfW = rx; halfH = ry + fabsf(eyeCy);
+  } else if (shape == DIZZY) {
+    pairRot = smoothKeys(DIZZY_KEYS, DIZZY_N, 1, animT) * (3.14159265f / 180.0f);
+    spacing = smoothKeys(DIZZY_KEYS, DIZZY_N, 2, animT);
+    offX = smoothKeys(DIZZY_KEYS, DIZZY_N, 3, animT);
+    offY = smoothKeys(DIZZY_KEYS, DIZZY_N, 4, animT);
+    rx = smoothKeys(DIZZY_KEYS, DIZZY_N, 5, animT);
+    ry = smoothKeys(DIZZY_KEYS, DIZZY_N, 6, animT);
+    swirl = clamp01(smoothKeys(DIZZY_KEYS, DIZZY_N, 7, animT));
+    float c = cosf(pairRot), s = sinf(pairRot);
+    float hx = sqrtf(rx * c * rx * c + ry * s * ry * s), hy = sqrtf(rx * s * rx * s + ry * c * ry * c);
+    float sw = swirl > 0 ? SWIRL_R + SWIRL_HALF : 0;
+    halfW = fmaxf(hx, sw); halfH = fmaxf(hy, sw);
+  }
   WowKey wk = {0, 0, 0, 0, 0, 0};
   if (mood_ == WOW) {
     wk = wowAt((now - moodSince_) / 1000.0f);
@@ -390,13 +507,21 @@ void Engine::update(uint32_t now) {
   }
   for (int i = 0; i < 2; i++) {
     Eye& e = eye_[i];
-    e.shape = mood_;
+    e.shape = shape;
     e.side = i == 0 ? -1.0f : 1.0f;
     e.cx = CX + e.side * spacing + lookX_ * st.gazeX;
     e.cy = CY + lookY_ * st.gazeY;
+    e.rot = pairRot; e.cosr = cosf(pairRot); e.sinr = sinf(pairRot);
+    e.lidC = lidC; e.lidK = lidK; e.round = rnd; e.swirl = swirl;
+    e.spin = animT * SWIRL_SPIN;
+    if (shape == DIZZY) {   // the pair rocks around the middle of the face
+      e.cx = CX + offX + e.side * spacing * e.cosr + lookX_ * st.gazeX;
+      e.cy = CY + offY + e.side * spacing * e.sinr + lookY_ * st.gazeY;
+    }
+    if (shape == ANGRY) e.cy += eyeCy;
     e.scale = breathe;
     e.squash = open;
-    e.rx = wk.rx; e.ry = wk.ry;
+    e.rx = shape == WOW ? wk.rx : rx; e.ry = shape == WOW ? wk.ry : ry;
     e.pupilR = wk.pupilR; e.pupilIn = wk.pupilIn;
     e.pupilDX = lookX_ * wk.rx * 0.25f;   // the pupils look where the eyes look
     e.pupilDY = lookY_ * wk.ry * 0.2f;

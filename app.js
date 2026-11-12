@@ -4,7 +4,7 @@ import {
   DEFAULT_THRESHOLDS, DEFAULT_TIMINGS, MOOD_LABELS,
 } from './attention.js';
 import { SerialLink, BleLink } from './link.js';
-import { Engine as EyeEngine, Mirror, ScreenPreview } from './eyes.js';
+import { Engine as EyeEngine, Mirror, ScreenPreview, DIZZY_TOTAL_MS } from './eyes.js';
 import { ColorPicker, DEFAULT_COLORS, hex6 } from './colors.js';
 
 const $ = (id) => document.getElementById(id);
@@ -228,7 +228,7 @@ requestAnimationFrame(previewLoop);
 // tabs, which would let the board fall into idle mode (it idles after 3 s without `E`).
 const ticker = new Worker(URL.createObjectURL(new Blob(
   [`setInterval(() => postMessage(0), ${Math.round(1000 / SEND_HZ)});`], { type: 'text/javascript' })));
-ticker.onmessage = () => { stepEyes(); sendNow(); pomodoroTick(); };   // keeps the blink clock (and the pomodoro) running in background tabs too
+ticker.onmessage = () => { stepEyes(); sendNow(); pomodoroTick(); dizzyTick(); };   // keeps the blink clock (and the pomodoro) running in background tabs too
 
 // ------------------------------------------------------------------ vision
 let vision = null;       // Vision instance once the model is loaded
@@ -413,12 +413,27 @@ function setDemo(on) {
 // Expression buttons: Auto (camera decides) or hold one expression on the board.
 const exprButtons = [...document.querySelectorAll('#exprBtns button')];
 function setExpression(expr) {
+  if (expr !== 'dizzy') dizzyBackAt = 0;   // anything else (a button, the pomodoro) cancels dizzy's hand-back
   state.manual = expr === 'auto' ? null : expr;
   for (const btn of exprButtons) btn.setAttribute('aria-pressed', String(btn.dataset.expr === expr));
   syncNow();   // preview and board start the switch-blink at the same instant
   scheduleRender();
 }
-for (const btn of exprButtons) btn.onclick = () => setExpression(btn.dataset.expr);
+for (const btn of exprButtons) btn.onclick = () => pressExpression(btn.dataset.expr);
+
+// Dizzy plays once (wobble -> swirls for 1 s -> back to the focused ovals), then the expression you had
+// before comes back. The eyes themselves already look focused by then, so the hand-back is seamless.
+let dizzyBackAt = 0, dizzyBackTo = 'auto';
+function pressExpression(expr) {
+  if (expr === 'dizzy') {
+    dizzyBackTo = state.manual && state.manual !== 'dizzy' ? state.manual : 'auto';
+    dizzyBackAt = Math.floor(performance.now()) + DIZZY_TOTAL_MS + 100;
+  }
+  setExpression(expr);
+}
+function dizzyTick() {
+  if (dizzyBackAt && Math.floor(performance.now()) >= dizzyBackAt) setExpression(dizzyBackTo);
+}
 
 // ------------------------------------------------------------------ pomodoro (25-min study timer)
 // Start: surprised eyes -> 2 s of the timer screen -> focused eyes until time's up.
