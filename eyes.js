@@ -46,6 +46,7 @@ const ANGRY_KEYS = [
   [0.40, 98, -11, 72, 69, -28.0, 0.55, 8],
   [0.85, 98, -12, 56, 54, -13.5, 0.60, 8],
 ];
+const ANGRY_RELEASE_MS = 700;   // angry -> focused: smoothstep back to the focused ovals
 // t (s), tilt (deg), spacing, centre x, centre y, rx, ry, swirl 0..1
 const DIZZY_KEYS = [
   [0.00, 0, 103, 0, 0, 55, 74, 0],
@@ -233,6 +234,7 @@ export class Engine {
     this.wander = false; this.wanderX = 0; this.wanderY = 0; this.nextWander = 0;
     this.eyes = [{}, {}];
     this.moodSince = 0;
+    this.releasing = false; this.releaseStart = 0; this.releaseFromT = 0;   // angry -> focused settle
     this.fullVersion = 1;   // bumps whenever the whole screen must be redrawn
     this.pomoActive = false; this.timerShown = false;
     this.pomoEnd = 0; this.pomoTotalMs = 0; this.timerUntil = 0; this.timerSecs = 0; this.timerFrac = 0;
@@ -278,8 +280,14 @@ export class Engine {
   setAutoBlink(on) { this.autoBlink = on; }
   dizzyRunning(now) { return this.mood === DIZZY && (((now >>> 0) - this.moodSince) >>> 0) < DIZZY_TOTAL_MS; }
   blinkNow(now, twice) {
-    if (this.blinkPhase || this.target !== this.mood || this.dizzyRunning(now)) return false;
+    if (this.blinkPhase || this.target !== this.mood || this.dizzyRunning(now) || this.releasing) return false;
     this.startBlink(now >>> 0); this.doubleBlink = !!twice; return true;
+  }
+  angryParam(field, animT, now) {
+    if (!this.releasing) return smoothKeys(ANGRY_KEYS, field, animT);
+    const a = smoothKeys(ANGRY_KEYS, field, this.releaseFromT);
+    const u = clamp01(((now - this.releaseStart) >>> 0) / ANGRY_RELEASE_MS), k = u * u * (3 - 2 * u);
+    return a + (ANGRY_KEYS[0][field] - a) * k;
   }
   takeBlinkEvent() { const e = this.blinkEvent; this.blinkEvent = null; return e; }
   get jitterX() { return this.jitX; }
@@ -316,13 +324,20 @@ export class Engine {
     if (dt > 0.1) dt = 0.1;
     this.lastMs = now;
 
+    if (!this.blinkPhase && !this.releasing && this.mood === ANGRY && this.target === NEUTRAL) {   // see eyes.cpp
+      this.releasing = true; this.releaseStart = now;
+      this.releaseFromT = ((now - this.moodSince) >>> 0) / 1000;
+    }
+    if (this.releasing && ((now - this.releaseStart) >>> 0) >= ANGRY_RELEASE_MS) {
+      this.releasing = false; this.mood = NEUTRAL; this.moodSince = now;
+    }
     if (!this.blinkPhase && this.target !== this.mood) {
       const fromFocus = this.mood === NEUTRAL && (this.target === ANGRY || this.target === DIZZY);
       const dizzyDone = this.mood === DIZZY && !this.dizzyRunning(now) && this.target === NEUTRAL;
       if (fromFocus || dizzyDone) { this.mood = this.target; this.moodSince = now; }
     }
-    const quiet = this.dizzyRunning(now);
-    if (!this.blinkPhase && (this.target !== this.mood || (this.autoBlink && !quiet && reached(now, this.nextBlink)))) {
+    const quiet = this.dizzyRunning(now) || this.releasing;
+    if (!this.blinkPhase && !this.releasing && (this.target !== this.mood || (this.autoBlink && !quiet && reached(now, this.nextBlink)))) {
       const natural = this.target === this.mood;
       this.startBlink(now);
       this.doubleBlink = natural && this.randf(0, 1) < 0.15;
@@ -359,10 +374,9 @@ export class Engine {
     const animT = ((now - this.moodSince) >>> 0) / 1000;
     let pairRot = 0, offX = 0, offY = 0, eyeCy = 0, rx = 0, ry = 0, lidC = 0, lidK = 0, rnd = 0, swirl = 0;
     if (shape === ANGRY) {
-      const K = ANGRY_KEYS;
-      spacing = smoothKeys(K, 1, animT); eyeCy = smoothKeys(K, 2, animT);
-      rx = smoothKeys(K, 3, animT); ry = smoothKeys(K, 4, animT);
-      lidC = smoothKeys(K, 5, animT); lidK = smoothKeys(K, 6, animT); rnd = smoothKeys(K, 7, animT);
+      spacing = this.angryParam(1, animT, now); eyeCy = this.angryParam(2, animT, now);
+      rx = this.angryParam(3, animT, now); ry = this.angryParam(4, animT, now);
+      lidC = this.angryParam(5, animT, now); lidK = this.angryParam(6, animT, now); rnd = this.angryParam(7, animT, now);
       halfW = rx; halfH = ry + Math.abs(eyeCy);
     } else if (shape === DIZZY) {
       const K = DIZZY_KEYS;

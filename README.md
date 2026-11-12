@@ -118,6 +118,9 @@ board to see the time left for 2 s. When time's up the board shows `00:00`, the 
 and the page says "Pomodoro done!". **Stop pomodoro** ends it early. The board keeps its own countdown, so touching it
 still shows the time if the page is closed; the page remembers a running session across a reload.
 
+**Look away during a pomodoro** (camera on) for more than 1 s and the eyes turn **angry**: the lids slide down into a
+glare, then a squint, and stay that way. Look back at the screen and they smoothly settle into the focused ovals again.
+
 ## Colors
 The **colors** card sets the eye color and the screen color. Pick **Eyes** or **Screen**, then drag on the wheel
 (hue around, saturation outward), use the brightness slider, or type a hex code. The preview and the board change

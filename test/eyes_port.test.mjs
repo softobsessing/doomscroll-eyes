@@ -89,6 +89,19 @@ function compare(name, e) {
     if (ESHOTS.includes(t)) compare(`evolve_${k++}`, e);
   }
 }
+// ---- angry settling back into focused: full release, release mid-glare, angry again mid-release ----
+{
+  const e = new Engine(11);
+  e.setWander(false); e.setAutoBlink(false);
+  const SSHOTS = [1700, 1900, 2100, 2250, 2400, 2800, 3000, 3300, 3500, 3650, 3800, 4200];
+  let k = 0;
+  for (let t = 0; t <= 4300; t += 10) {
+    e.setMood(t < 200 ? 'neutral' : t < 1600 ? 'angry' : t < 2600 ? 'neutral' : t < 2900 ? 'angry' : t < 3200 ? 'neutral' : 'angry');
+    e.setLook(Math.fround(0.3 * Math.sin(t / 450)), Math.fround(0.2 * Math.cos(t / 650)));
+    e.update(t);
+    if (SSHOTS.includes(t)) compare(`settle_${k++}`, e);
+  }
+}
 console.log(`\n${frames} frames compared; worst frame has ${worst} pixels off by more than a rounding step`);
 assert.ok(worst <= 40, 'eyes.js no longer matches eyes.cpp');
 console.log('ok: the website preview matches the board');

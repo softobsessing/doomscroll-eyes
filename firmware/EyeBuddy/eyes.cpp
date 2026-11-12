@@ -58,6 +58,8 @@ static const float ANGRY_KEYS[][8] = {
     {0.85f,  98, -12, 56, 54,  -13.5f, 0.60f, 8},   // narrowed squint (holds)
 };
 constexpr int ANGRY_N = sizeof(ANGRY_KEYS) / sizeof(ANGRY_KEYS[0]);
+// angry -> focused: from wherever the angry animation is, ease (smoothstep) back to the focused ovals
+constexpr uint32_t ANGRY_RELEASE_MS = 700;
 
 // dizzy: the pair of eyes rocks around the face, flattens, becomes spinning swirls for 1 s, then
 // melts back into the focused ovals.  t (s), tilt (deg), spacing, centre x, centre y, rx, ry, swirl 0..1
@@ -385,8 +387,15 @@ float Engine::blinkOpenness(uint32_t now) {
 
 bool Engine::dizzyRunning(uint32_t now) const { return mood_ == DIZZY && (uint32_t)(now - moodSince_) < DIZZY_TOTAL_MS; }
 
+float Engine::angryParam(int field, float animT, uint32_t now) const {
+  if (!releasing_) return smoothKeys(ANGRY_KEYS, ANGRY_N, field, animT);
+  float a = smoothKeys(ANGRY_KEYS, ANGRY_N, field, releaseFromT_);
+  float u = clamp01((uint32_t)(now - releaseStart_) / (float)ANGRY_RELEASE_MS), k = u * u * (3 - 2 * u);
+  return a + (ANGRY_KEYS[0][field] - a) * k;
+}
+
 bool Engine::blinkNow(uint32_t now, bool twice) {
-  if (blinkPhase_ || target_ != mood_ || dizzyRunning(now)) return false;   // no blinking mid-wobble
+  if (blinkPhase_ || target_ != mood_ || dizzyRunning(now) || releasing_) return false;   // no blinking mid-wobble
   startBlink(now);
   doubleBlink_ = twice;
   return true;
@@ -433,14 +442,26 @@ void Engine::update(uint32_t now) {
 
   // Angry and dizzy grow straight out of the focused ovals (no blink), and a finished dizzy (which already
   // looks like the focused ovals) hands back to focused without one either.
+  // Angry settles back into focused smoothly; if angry is wanted again meanwhile, the release finishes
+  // first and angry then grows out of the focused ovals again.
+  if (!blinkPhase_ && !releasing_ && mood_ == ANGRY && target_ == NEUTRAL) {
+    releasing_ = true;
+    releaseStart_ = now;
+    releaseFromT_ = (now - moodSince_) / 1000.0f;
+  }
+  if (releasing_ && (uint32_t)(now - releaseStart_) >= ANGRY_RELEASE_MS) {
+    releasing_ = false;
+    mood_ = NEUTRAL;
+    moodSince_ = now;
+  }
   if (!blinkPhase_ && target_ != mood_) {
     bool fromFocus = mood_ == NEUTRAL && (target_ == ANGRY || target_ == DIZZY);
     bool dizzyDone = mood_ == DIZZY && !dizzyRunning(now) && target_ == NEUTRAL;
     if (fromFocus || dizzyDone) { mood_ = target_; moodSince_ = now; }
   }
   // blinking: random 2-6 s, sometimes a double blink; a mood change forces a blink right away
-  bool quiet = dizzyRunning(now);   // no random blinks while dizzy
-  if (!blinkPhase_ && (target_ != mood_ || (autoBlink_ && !quiet && reached(now, nextBlink_)))) {
+  bool quiet = dizzyRunning(now) || releasing_;   // no random blinks while dizzy or settling
+  if (!blinkPhase_ && !releasing_ && (target_ != mood_ || (autoBlink_ && !quiet && reached(now, nextBlink_)))) {
     bool natural = target_ == mood_;
     startBlink(now);
     doubleBlink_ = natural && randf(0, 1) < 0.15f;
@@ -479,13 +500,13 @@ void Engine::update(uint32_t now) {
   // angry / dizzy shape this frame
   float pairRot = 0, offX = 0, offY = 0, eyeCy = 0, rx = 0, ry = 0, lidC = 0, lidK = 0, rnd = 0, swirl = 0;
   if (shape == ANGRY) {
-    spacing = smoothKeys(ANGRY_KEYS, ANGRY_N, 1, animT);
-    eyeCy = smoothKeys(ANGRY_KEYS, ANGRY_N, 2, animT);
-    rx = smoothKeys(ANGRY_KEYS, ANGRY_N, 3, animT);
-    ry = smoothKeys(ANGRY_KEYS, ANGRY_N, 4, animT);
-    lidC = smoothKeys(ANGRY_KEYS, ANGRY_N, 5, animT);
-    lidK = smoothKeys(ANGRY_KEYS, ANGRY_N, 6, animT);
-    rnd = smoothKeys(ANGRY_KEYS, ANGRY_N, 7, animT);
+    spacing = angryParam(1, animT, now);
+    eyeCy = angryParam(2, animT, now);
+    rx = angryParam(3, animT, now);
+    ry = angryParam(4, animT, now);
+    lidC = angryParam(5, animT, now);
+    lidK = angryParam(6, animT, now);
+    rnd = angryParam(7, animT, now);
     halfW = rx; halfH = ry + fabsf(eyeCy);
   } else if (shape == DIZZY) {
     pairRot = smoothKeys(DIZZY_KEYS, DIZZY_N, 1, animT) * (3.14159265f / 180.0f);

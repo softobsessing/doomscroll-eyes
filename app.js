@@ -60,6 +60,8 @@ const state = {
   userBlink: false,     // your eyes are closed right now (camera)
 };
 
+let pomoAngry = false;   // pomodoro + you looked away -> angry eyes (see pomoAngerTick)
+
 // ------------------------------------------------------------------ caught-today counter
 function caughtToday() {
   const c = loadJSON(LS.caught, null);
@@ -165,6 +167,7 @@ function toast(msg) {
 function currentFrame() {
   const tracking = !state.demo && !state.paused;
   const lookX = tracking ? state.lookX : 0, lookY = tracking ? state.lookY : 0;
+  if (pomoAngry) return ['angry', lookX, lookY];           // pomodoro + you looked away: glare until you're back
   if (state.manual) return [state.manual, lookX, lookY];   // held by a button; eyes still follow you
   if (!tracking) return ['neutral', 0, 0];
   return [state.mood, lookX, lookY];
@@ -228,7 +231,7 @@ requestAnimationFrame(previewLoop);
 // tabs, which would let the board fall into idle mode (it idles after 3 s without `E`).
 const ticker = new Worker(URL.createObjectURL(new Blob(
   [`setInterval(() => postMessage(0), ${Math.round(1000 / SEND_HZ)});`], { type: 'text/javascript' })));
-ticker.onmessage = () => { stepEyes(); sendNow(); pomodoroTick(); dizzyTick(); };   // keeps the blink clock (and the pomodoro) running in background tabs too
+ticker.onmessage = () => { pomoAngerTick(); stepEyes(); sendNow(); pomodoroTick(); dizzyTick(); };   // keeps the blink clock (and the pomodoro) running in background tabs too
 
 // ------------------------------------------------------------------ vision
 let vision = null;       // Vision instance once the model is loaded
@@ -490,6 +493,24 @@ function pomodoroTick() {
   if (pomo && now >= pomoSyncAt) syncPomodoro();
   renderPomodoro();
 }
+// Looking away while the focused eyes are on: after POMO_AWAY_MS the eyes turn angry (the lids slide down
+// into a glare, then a squint) and hold it; once the camera sees you looking back they settle into focused.
+// Angry is held at least POMO_ANGRY_MIN_MS so the glare always plays out.
+const POMO_AWAY_MS = 1000, POMO_ANGRY_MIN_MS = 1500;
+let pomoAwaySince = 0, pomoAngrySince = 0;
+function pomoAngerTick() {
+  const now = Math.floor(performance.now());
+  const watching = !!pomo && !pomoFlashAt && state.manual === 'neutral'
+    && !state.paused && !state.demo && !state.cal && state.cls !== null;
+  const away = watching && state.effective === 'AWAY';
+  if (!away) pomoAwaySince = 0;
+  else if (!pomoAwaySince) pomoAwaySince = now;
+  if (!pomoAngry && away && now - pomoAwaySince >= POMO_AWAY_MS) {
+    pomoAngry = true; pomoAngrySince = now; syncNow(); scheduleRender();
+  } else if (pomoAngry && (!watching || (!away && now - pomoAngrySince >= POMO_ANGRY_MIN_MS))) {
+    pomoAngry = false; syncNow(); scheduleRender();
+  }
+}
 function renderPomodoro(force = false) {
   const txt = pomo ? mmss(pomoLeft()) : mmss(POMO_MINUTES * 60);
   if (!force && txt === pomoShown) return;
@@ -658,7 +679,8 @@ function render() {
   }
   el.mood.textContent = MOOD_LABELS[mood];
   el.mood.dataset.mood = mood;
-  el.moodWord.textContent = state.manual ? `${mood} · held (press Auto to let the camera decide)` : mood;
+  el.moodWord.textContent = pomoAngry ? 'angry · you looked away during the pomodoro'
+    : state.manual ? `${mood} · held (press Auto to let the camera decide)` : mood;
   document.body.dataset.cls = state.cls || '';
   if (vision?.ready && !state.demo && !state.paused) {
     el.visionStatus.textContent = `face model ready (${vision.delegate}) · ${state.signals?.face ? 'face found' : 'no face'} · ${fmt(state.fps, 0)} fps`;

@@ -78,6 +78,18 @@ int main(int argc, char **argv) {
       for (uint32_t s : eshots) if (s == t) { dump(e, dir + "/evolve_" + std::to_string(k++) + ".bin"); n++; }
     }
   }
+  // ---- angry settling back into focused: full release, release mid-glare, angry again mid-release ----
+  {
+    Engine e; e.begin(11); e.setWander(false); e.setAutoBlink(false);
+    const uint32_t sshots[] = { 1700, 1900, 2100, 2250, 2400, 2800, 3000, 3300, 3500, 3650, 3800, 4200 };
+    int k = 0;
+    for (uint32_t t = 0; t <= 4300; t += 10) {
+      e.setMood(t < 200 ? NEUTRAL : t < 1600 ? ANGRY : t < 2600 ? NEUTRAL : t < 2900 ? ANGRY : t < 3200 ? NEUTRAL : ANGRY);
+      e.setLook((float)(0.3 * sin(t / 450.0)), (float)(0.2 * cos(t / 650.0)));
+      e.update(t);
+      for (uint32_t s : sshots) if (s == t) { dump(e, dir + "/settle_" + std::to_string(k++) + ".bin"); n++; }
+    }
+  }
   printf("wrote %d frames to %s\n", n, dir.c_str());
   return 0;
 }

@@ -109,6 +109,11 @@ class Engine {
 
   uint32_t moodSince_ = 0;   // when the current mood took over (drives the surprised/angry/dizzy animations)
   bool dizzyRunning(uint32_t now) const;
+  // angry -> focused settles smoothly (lids lift, eyes relax) instead of swapping inside a blink
+  bool releasing_ = false;
+  uint32_t releaseStart_ = 0;
+  float releaseFromT_ = 0;   // how far into the angry animation we were when the release began
+  float angryParam(int field, float animT, uint32_t now) const;
 
   // pomodoro + timer screen
   bool pomoActive_ = false, timerShown_ = false;

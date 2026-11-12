@@ -29,7 +29,9 @@ https://espressif.github.io/esptool-js/ (Chrome). No Arduino needed.
 
 **Pomodoro:** the website's pomodoro button: surprised eyes, 2 s of the timer screen, then focused eyes for 25 min.
 During it, a touch shows the time left for 2 s (instead of the smile). The board counts down by itself, so this works
-even with the website closed; at the end it shows `00:00` for 3 s.
+even with the website closed; at the end it shows `00:00` for 3 s. If the website's camera sees you look away for
+more than 1 s during the session, it sends `angry`; when you look back it sends `neutral` and the eyes settle back
+into the focused ovals over 0.7 s (lids lift, no blink).
 
 ![pomodoro](preview/pomodoro.png)
 
