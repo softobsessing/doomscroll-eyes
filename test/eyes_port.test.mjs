@@ -32,7 +32,7 @@ function compare(name, e) {
   }
   assert.ok(eyePx > 50, `${name}: nothing drawn`);
   worst = Math.max(worst, big); frames++;
-  console.log(`${name.padEnd(10)} ${e.moodName.padEnd(8)} eye px ${String(eyePx).padStart(6)}   ${diff ? `${diff} px off by a rounding step, ${big} by more` : 'identical'}`);
+  console.log(`${name.padEnd(10)} ${(e.timerShown ? `timer ${e.timerSecs}s` : e.moodName).padEnd(10)} eye px ${String(eyePx).padStart(6)}   ${diff ? `${diff} px off by a rounding step, ${big} by more` : 'identical'}`);
 }
 
 // ---- driven by the website: moods (incl. surprised), look, blinks, colors ----
@@ -58,6 +58,22 @@ function compare(name, e) {
   for (let t = 0; t <= 6000; t += 10) {
     e.update(t);
     if (SHOTS.includes(t)) compare(`solo_${k++}`, e);
+  }
+}
+// ---- pomodoro: timer screen (ticking), flash on demand, stop, and the 00:00 ending ----
+{
+  const e = new Engine(5);
+  e.setWander(false); e.setAutoBlink(false);
+  e.setColors(0x14213D, 0xFF5FA2);
+  const PSHOTS = [200, 1300, 2500, 3500, 4300, 6100];
+  let k = 0;
+  for (let t = 0; t <= 6200; t += 10) {
+    if (t === 0) e.setPomodoro(t, 65, 1500);
+    if (t === 100 || t === 3000) e.flashTimer(t, 2000);
+    if (t === 3800) e.setPomodoro(t, 0, 0);
+    if (t === 4000) e.setPomodoro(t, 2, 10);
+    e.update(t);
+    if (PSHOTS.includes(t)) compare(`pomo_${k++}`, e);
   }
 }
 console.log(`\n${frames} frames compared; worst frame has ${worst} pixels off by more than a rounding step`);

@@ -51,6 +51,21 @@ int main(int argc, char **argv) {
       for (uint32_t s : SHOTS) if (s == t) { dump(e, dir + "/solo_" + std::to_string(k++) + ".bin"); n++; }
     }
   }
+  // ---- pomodoro: timer screen (ticking), flash on demand, stop, and the 00:00 ending ----
+  {
+    Engine e; e.begin(5); e.setWander(false); e.setAutoBlink(false);
+    e.setColors(0x14213D, 0xFF5FA2);
+    const uint32_t pshots[] = { 200, 1300, 2500, 3500, 4300, 6100 };
+    int k = 0;
+    for (uint32_t t = 0; t <= 6200; t += 10) {
+      if (t == 0) e.setPomodoro(t, 65, 1500);       // 01:05 left of 25:00
+      if (t == 100 || t == 3000) e.flashTimer(t, 2000);
+      if (t == 3800) e.setPomodoro(t, 0, 0);        // stopped: the flash ends right away
+      if (t == 4000) e.setPomodoro(t, 2, 10);       // runs out at 6000 -> 00:00 for 3 s
+      e.update(t);
+      for (uint32_t s : pshots) if (s == t) { dump(e, dir + "/pomo_" + std::to_string(k++) + ".bin"); n++; }
+    }
+  }
   printf("wrote %d frames to %s\n", n, dir.c_str());
   return 0;
 }

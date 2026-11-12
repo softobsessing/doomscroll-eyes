@@ -20,7 +20,7 @@ const el = {
 // ------------------------------------------------------------------ settings (localStorage)
 const LS = {
   settings: 'eyebuddy.settings', baseline: 'eyebuddy.baseline', caught: 'eyebuddy.caught',
-  colors: 'eyebuddy.colors', savedColors: 'eyebuddy.savedColors',
+  colors: 'eyebuddy.colors', savedColors: 'eyebuddy.savedColors', pomodoro: 'eyebuddy.pomodoro',
 };
 const DEFAULT_LOOK = { gain: 1.0, tauMs: 150 };
 const SEND_HZ = 20;
@@ -83,6 +83,7 @@ for (const l of [usb, ble]) {
     renderConnButtons();
     if (s.state === 'connected') {   // hello blink: the board blinks on its first E line, the preview right now
       sendColors();                  // the website is in charge of the colors
+      syncPomodoro();                // a running pomodoro carries on on the board
       sendNow();
       eyeEngine.blinkNow(Math.floor(performance.now()), false);
     }
@@ -227,7 +228,7 @@ requestAnimationFrame(previewLoop);
 // tabs, which would let the board fall into idle mode (it idles after 3 s without `E`).
 const ticker = new Worker(URL.createObjectURL(new Blob(
   [`setInterval(() => postMessage(0), ${Math.round(1000 / SEND_HZ)});`], { type: 'text/javascript' })));
-ticker.onmessage = () => { stepEyes(); sendNow(); };   // keeps the blink clock running in background tabs too
+ticker.onmessage = () => { stepEyes(); sendNow(); pomodoroTick(); };   // keeps the blink clock (and the pomodoro) running in background tabs too
 
 // ------------------------------------------------------------------ vision
 let vision = null;       // Vision instance once the model is loaded
@@ -418,6 +419,75 @@ function setExpression(expr) {
   scheduleRender();
 }
 for (const btn of exprButtons) btn.onclick = () => setExpression(btn.dataset.expr);
+
+// ------------------------------------------------------------------ pomodoro (25-min study timer)
+// Start: surprised eyes -> 2 s of the timer screen -> focused eyes until time's up.
+// During the session a touch on the board shows the time left (the board and the preview each keep
+// their own countdown, synced with M lines). Time's up: the board shows 00:00, then surprised, then Auto.
+const POMO_MINUTES = 25, POMO_SURPRISE_MS = 1500, POMO_TIMER_MS = 2000, POMO_DONE_MS = 6000;
+let pomo = loadJSON(LS.pomodoro, null);   // {end: epoch ms, total: s}
+let pomoFlashAt = 0, pomoDoneAt = 0, pomoSyncAt = 0, pomoShown = '';
+const pomoLeft = () => (pomo ? Math.max(0, Math.ceil((pomo.end - Date.now()) / 1000)) : 0);
+const mmss = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+function syncPomodoro() {
+  const now = Math.floor(performance.now());
+  if (!pomo) { eyeEngine.setPomodoro(now, 0, 0); return; }
+  eyeEngine.setPomodoro(now, pomoLeft(), pomo.total);
+  if (link?.connected) link.send(`M ${pomoLeft()} ${pomo.total}`);
+  pomoSyncAt = now + 60_000;   // re-sync every minute
+}
+function startPomodoro() {
+  pomo = { end: Date.now() + POMO_MINUTES * 60_000, total: POMO_MINUTES * 60 };
+  saveJSON(LS.pomodoro, pomo);
+  pomoDoneAt = 0;
+  setExpression('wow');                                    // 1. surprised
+  syncPomodoro();
+  pomoFlashAt = Math.floor(performance.now()) + POMO_SURPRISE_MS;
+  renderPomodoro(true);
+}
+function stopPomodoro() {
+  pomo = null;
+  saveJSON(LS.pomodoro, null);
+  pomoFlashAt = 0;
+  syncPomodoro();
+  if (link?.connected) link.send('M 0 0');
+  setExpression('auto');
+  renderPomodoro(true);
+}
+function pomodoroTick() {
+  const now = Math.floor(performance.now());
+  if (pomoFlashAt && now >= pomoFlashAt) {                 // 2. the timer screen for 2 s...
+    pomoFlashAt = 0;
+    eyeEngine.flashTimer(now, POMO_TIMER_MS);
+    if (link?.connected) link.send('S');
+    setExpression('neutral');                              // 3. ...then focused (switches out of sight)
+  }
+  if (pomo && Date.now() >= pomo.end) {                    // time's up: 00:00 on the board, then surprised
+    pomo = null;
+    saveJSON(LS.pomodoro, null);
+    pomoFlashAt = 0;
+    setExpression('wow');
+    pomoDoneAt = now + POMO_DONE_MS;
+    toast('Pomodoro done! Take a break.');
+  }
+  if (pomoDoneAt && now >= pomoDoneAt) { pomoDoneAt = 0; setExpression('auto'); }
+  if (pomo && now >= pomoSyncAt) syncPomodoro();
+  renderPomodoro();
+}
+function renderPomodoro(force = false) {
+  const txt = pomo ? mmss(pomoLeft()) : mmss(POMO_MINUTES * 60);
+  if (!force && txt === pomoShown) return;
+  pomoShown = txt;
+  $('pomoTime').textContent = txt;
+  $('pomoTime').dataset.running = String(!!pomo);
+  $('btnPomo').textContent = pomo ? 'Stop pomodoro' : `Start ${POMO_MINUTES}-min pomodoro`;
+  $('btnPomo').setAttribute('aria-pressed', String(!!pomo));
+}
+$('btnPomo').onclick = () => (pomo ? stopPomodoro() : startPomodoro());
+if (pomo && pomo.end > Date.now()) { setExpression('neutral'); syncPomodoro(); }   // resume after a reload
+else { pomo = null; saveJSON(LS.pomodoro, null); }
+renderPomodoro(true);
 
 // ------------------------------------------------------------------ overlay
 function drawOverlay(landmarks) {

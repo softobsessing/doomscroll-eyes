@@ -45,9 +45,11 @@ as a toast ("you booped it").
 | laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad wow` (`wow` = surprised) |
 | laptop → board | `K <screen> <eyes>` | colors as `RRGGBB`, e.g. `K 000000 EFC742`; sent on connect and live while you drag the color wheel. The board saves them |
 | laptop → board | `B` / `B2` | blink now / double blink (the preview is the blink clock) |
+| laptop → board | `M <left> <total>` | pomodoro: seconds left / session length; sent at start, on connect and every minute. `M 0 0` = stop |
+| laptop → board | `S` | show the pomodoro time left for 2 s |
 | laptop → board | `P` | ping |
 | board → laptop | `HELLO EyeBuddy 2` | on boot and in reply to `P` (v2 = has surprised + colors) |
-| board → laptop | `T touch` / `T release` | finger down / up (board smiles while touched + 2.5 s) |
+| board → laptop | `T touch` / `T release` | finger down / up (board smiles while touched + 2.5 s; during a pomodoro it shows the time left instead) |
 
 `lookX`, `lookY` are integers from −100 to 100, with 0,0 at the centre (and when no face is seen).
 Directions are on the board's screen **as the user sees it**: +X = pupils toward the right edge,
@@ -105,6 +107,13 @@ vendor/                           tasks-vision 0.10.35 bundle + wasm, face_landm
 Under the status: **Auto** (the camera decides) or one of **focused / welcome back / side-eye / disappointed /
 surprised**. Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
 **surprised** is button-only: the eyes blink, then grow from small wide ovals to huge tall ones with tiny pupils.
+
+## Pomodoro
+Under the expressions: **Start 25-min pomodoro**. The eyes go surprised, the board shows the timer for 2 s (big
+`MM:SS` and a ring that empties as time runs out), then focused eyes until time's up. During the session, touch the
+board to see the time left for 2 s. When time's up the board shows `00:00`, the eyes go surprised, then back to Auto,
+and the page says "Pomodoro done!". **Stop pomodoro** ends it early. The board keeps its own countdown, so touching it
+still shows the time if the page is closed; the page remembers a running session across a reload.
 
 ## Colors
 The **colors** card sets the eye color and the screen color. Pick **Eyes** or **Screen**, then drag on the wheel

@@ -21,6 +21,12 @@ https://espressif.github.io/esptool-js/ (Chrome). No Arduino needed.
 
 ![surprised](preview/surprised.png)
 
+**Pomodoro:** the website's pomodoro button: surprised eyes, 2 s of the timer screen, then focused eyes for 25 min.
+During it, a touch shows the time left for 2 s (instead of the smile). The board counts down by itself, so this works
+even with the website closed; at the end it shows `00:00` for 3 s.
+
+![pomodoro](preview/pomodoro.png)
+
 **Colors:** the website's color wheel sets the eye color and the screen color (`K` line below). The board saves
 the last colors in flash (1.5 s after you stop changing them), so they survive a restart.
 
@@ -28,6 +34,7 @@ Expression changes always happen mid-blink, so the eyes close in one mood and op
 
 ## Touch
 - **any touch**: the welcome-back smile right away, for as long as your finger stays plus 2.5 s after.
+- **during a pomodoro**: the time left, for 2 s.
   With no laptop connected the eyes look at your finger.
 
 Connecting the web app (USB or Bluetooth) makes the eyes blink hello.
@@ -62,6 +69,8 @@ To go back to the Waveshare factory clock: `esp32-tools/venv/bin/esptool.py --ch
 ```
 laptop -> board   E <neutral|happy|side|sad|wow> <lookX -100..100> <lookY -100..100>    (~20 per second; wow = surprised)
                   K <screen RRGGBB> <eyes RRGGBB>                                       (colors)
+                  M <secondsLeft> <totalSeconds>                                        (pomodoro; M 0 0 = stop)
+                  S                                                                     (show the time left for 2 s)
                   B | B2                                                           (blink now / double blink)
                   P                                                                (ping)
 board -> laptop   HELLO EyeBuddy 2

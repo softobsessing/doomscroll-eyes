@@ -162,7 +162,65 @@ static float shapeDistance(const Eye& e, float x, float y, float* crease) {
   }
 }
 
+// ---- timer screen: MM:SS in seven-segment digits + a ring that empties as time runs out ----
+constexpr float DIGIT_W = 64, DIGIT_H = 120, DIGIT_T = 14, DIGIT_GAP = 22, COLON_W = 34, SEG_INSET = 11;
+constexpr float RING_R = 212, RING_HALF = 4, RING_DIM = 0.22f;
+static const uint8_t SEGMENTS[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};   // bits a..g
+
+// coverage of one digit centred at x = cx (y = 0 is the middle line)
+static float digitCoverage(int digit, float x, float y, float cx) {
+  const float xl = cx - DIGIT_W / 2 + DIGIT_T / 2, xr = cx + DIGIT_W / 2 - DIGIT_T / 2;
+  const float yt = -DIGIT_H / 2 + DIGIT_T / 2, yb = DIGIT_H / 2 - DIGIT_T / 2, s = SEG_INSET;
+  uint8_t m = SEGMENTS[digit];
+  float d = 1e9f;
+  if (m & 0x01) d = fminf(d, sdSegment(x, y, xl + s, yt, xr - s, yt));   // a top
+  if (m & 0x02) d = fminf(d, sdSegment(x, y, xr, yt + s, xr, -s));       // b upper right
+  if (m & 0x04) d = fminf(d, sdSegment(x, y, xr, s, xr, yb - s));        // c lower right
+  if (m & 0x08) d = fminf(d, sdSegment(x, y, xl + s, yb, xr - s, yb));   // d bottom
+  if (m & 0x10) d = fminf(d, sdSegment(x, y, xl, s, xl, yb - s));        // e lower left
+  if (m & 0x20) d = fminf(d, sdSegment(x, y, xl, yt + s, xl, -s));       // f upper left
+  if (m & 0x40) d = fminf(d, sdSegment(x, y, xl + s, 0, xr - s, 0));     // g middle
+  return clamp01(0.5f - (d - DIGIT_T / 2));
+}
+
+uint16_t Engine::shadeTimer(int px, int py) const {
+  float x = px + 0.5f - CX, y = py + 0.5f - CY;
+  float a = 0;
+  float r = len(x, y);
+  float ring = clamp01(0.5f - (fabsf(r - RING_R) - RING_HALF));
+  if (ring > 0) {   // bright for the time left (clockwise from 12 o'clock), dim for the rest
+    float ang = atan2f(x, -y);
+    if (ang < 0) ang += 6.2831853f;
+    a = ring * (ang <= timerFrac_ * 6.2831853f ? 1.0f : RING_DIM);
+  }
+  const float inner = COLON_W / 2 + DIGIT_W / 2, outer = COLON_W / 2 + DIGIT_W + DIGIT_GAP + DIGIT_W / 2;
+  if (fabsf(y) <= DIGIT_H / 2 + 2 && fabsf(x) <= outer + DIGIT_W / 2 + 2) {
+    uint32_t mm = timerSecs_ / 60, ss = timerSecs_ % 60;
+    if (mm > 99) mm = 99;
+    const int digits[4] = {(int)(mm / 10), (int)(mm % 10), (int)(ss / 10), (int)(ss % 10)};
+    const float centers[4] = {-outer, -inner, inner, outer};
+    int i = x < -(inner + outer) / 2 ? 0 : x < 0 ? 1 : x < (inner + outer) / 2 ? 2 : 3;   // the digit cell under x
+    a = fmaxf(a, digitCoverage(digits[i], x, y, centers[i]));
+    if (fabsf(x) < COLON_W / 2) {   // colon
+      float dc = fminf(len(x, y + DIGIT_H * 0.2f), len(x, y - DIGIT_H * 0.2f)) - DIGIT_T * 0.6f;
+      a = fmaxf(a, clamp01(0.5f - dc));
+    }
+  }
+  return blend(a, 0);
+}
+
+uint16_t Engine::blend(float alpha, float crease) const {
+  if (alpha <= 0) return face565_;
+  // mix in 5/6-bit channel space, then quantise; alpha 1 gives the exact eye colour
+  float er = eyeR_ + (eyeR_ * CREASE_DARKEN - eyeR_) * crease;
+  float eg = eyeG_ + (eyeG_ * CREASE_DARKEN - eyeG_) * crease;
+  float eb = eyeB_ + (eyeB_ * CREASE_DARKEN - eyeB_) * crease;
+  float r = faceR_ + (er - faceR_) * alpha, g = faceG_ + (eg - faceG_) * alpha, b = faceB_ + (eb - faceB_) * alpha;
+  return rgb565((int)(r + 0.5f), (int)(g + 0.5f), (int)(b + 0.5f));
+}
+
 uint16_t Engine::shade(int px, int py) const {
+  if (timerShown_) return shadeTimer(px, py);
   float alpha = 0, crease = 0;
   for (int i = 0; i < 2; i++) {
     const Eye& e = eye_[i];
@@ -180,18 +238,12 @@ uint16_t Engine::shade(int px, int py) const {
     }
     if (a > alpha) { alpha = a; crease = c; }
   }
-  if (alpha <= 0) return face565_;
-  // mix in 5/6-bit channel space, then quantise; alpha 1 gives the exact eye colour
-  float er = eyeR_ + (eyeR_ * CREASE_DARKEN - eyeR_) * crease;
-  float eg = eyeG_ + (eyeG_ * CREASE_DARKEN - eyeG_) * crease;
-  float eb = eyeB_ + (eyeB_ * CREASE_DARKEN - eyeB_) * crease;
-  float r = faceR_ + (er - faceR_) * alpha, g = faceG_ + (eg - faceG_) * alpha, b = faceB_ + (eb - faceB_) * alpha;
-  return rgb565((int)(r + 0.5f), (int)(g + 0.5f), (int)(b + 0.5f));
+  return blend(alpha, crease);
 }
 
 void Engine::setColors(uint32_t face, uint32_t eye) {
   face &= 0xFFFFFF; eye &= 0xFFFFFF;
-  if (face != face_) faceVersion_++;
+  if (face != face_ || (timerShown_ && eye != eyeRgb_)) fullVersion_++;
   face_ = face; eyeRgb_ = eye;
   faceR_ = ((face >> 16) & 0xFF) * 31 / 255.0f; faceG_ = ((face >> 8) & 0xFF) * 63 / 255.0f; faceB_ = (face & 0xFF) * 31 / 255.0f;
   eyeR_ = ((eye >> 16) & 0xFF) * 31 / 255.0f;   eyeG_ = ((eye >> 8) & 0xFF) * 63 / 255.0f;   eyeB_ = (eye & 0xFF) * 31 / 255.0f;
@@ -261,6 +313,23 @@ bool Engine::takeBlinkEvent(bool* twice) {
 
 static inline bool reached(uint32_t now, uint32_t when) { return (int32_t)(now - when) >= 0; }
 
+void Engine::setPomodoro(uint32_t now, uint32_t secondsLeft, uint32_t totalSeconds) {
+  if (!secondsLeft) { pomoActive_ = false; timerUntil_ = 0; return; }
+  pomoActive_ = true;
+  pomoEnd_ = now + secondsLeft * 1000;
+  pomoTotalMs_ = (totalSeconds ? totalSeconds : secondsLeft) * 1000;
+}
+
+void Engine::flashTimer(uint32_t now, uint32_t ms) {
+  if (!pomoActive_) return;
+  timerUntil_ = (now + ms) | 1;   // never 0 (0 = not showing)
+}
+
+uint32_t Engine::pomodoroSecondsLeft(uint32_t now) const {
+  if (!pomoActive_ || reached(now, pomoEnd_)) return 0;
+  return (pomoEnd_ - now + 999) / 1000;
+}
+
 void Engine::update(uint32_t now) {
   if (!started_) {
     started_ = true;
@@ -329,6 +398,17 @@ void Engine::update(uint32_t now) {
     e.x0 = (int)floorf(e.cx - hw); e.x1 = (int)ceilf(e.cx + hw);
     e.y0 = (int)floorf(e.cy - hh); e.y1 = (int)ceilf(e.cy + hh);
   }
+
+  // pomodoro: when time's up, show 00:00 for 3 s
+  if (pomoActive_ && reached(now, pomoEnd_)) { pomoActive_ = false; timerUntil_ = (now + 3000) | 1; }
+  bool shown = timerUntil_ != 0 && !reached(now, timerUntil_);
+  if (!shown) timerUntil_ = 0;
+  uint32_t secs = pomodoroSecondsLeft(now);
+  if (shown != timerShown_ || (shown && secs != timerSecs_)) fullVersion_++;   // redraw on open/close/tick
+  timerShown_ = shown;
+  timerSecs_ = secs;
+  timerFrac_ = pomoTotalMs_ ? secs * 1000.0f / pomoTotalMs_ : 0;
+  if (timerFrac_ > 1) timerFrac_ = 1;
 }
 
 }  // namespace eyes

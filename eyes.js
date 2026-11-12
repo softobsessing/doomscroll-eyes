@@ -126,6 +126,25 @@ function shapeDistance(e, x, y) {
 
 const reached = (now, when) => ((now - when) | 0) >= 0;
 
+// ---- timer screen: MM:SS in seven-segment digits + a ring that empties (same as eyes.cpp) ----
+const DIGIT_W = 64, DIGIT_H = 120, DIGIT_T = 14, DIGIT_GAP = 22, COLON_W = 34, SEG_INSET = 11;
+const RING_R = 212, RING_HALF = 4, RING_DIM = 0.22;
+const SEGMENTS = [0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F];
+function digitCoverage(digit, x, y, cx) {
+  const xl = cx - DIGIT_W / 2 + DIGIT_T / 2, xr = cx + DIGIT_W / 2 - DIGIT_T / 2;
+  const yt = -DIGIT_H / 2 + DIGIT_T / 2, yb = DIGIT_H / 2 - DIGIT_T / 2, s = SEG_INSET;
+  const m = SEGMENTS[digit];
+  let d = 1e9;
+  if (m & 0x01) d = Math.min(d, sdSegment(x, y, xl + s, yt, xr - s, yt));
+  if (m & 0x02) d = Math.min(d, sdSegment(x, y, xr, yt + s, xr, -s));
+  if (m & 0x04) d = Math.min(d, sdSegment(x, y, xr, s, xr, yb - s));
+  if (m & 0x08) d = Math.min(d, sdSegment(x, y, xl + s, yb, xr - s, yb));
+  if (m & 0x10) d = Math.min(d, sdSegment(x, y, xl, s, xl, yb - s));
+  if (m & 0x20) d = Math.min(d, sdSegment(x, y, xl, yt + s, xl, -s));
+  if (m & 0x40) d = Math.min(d, sdSegment(x, y, xl + s, 0, xr - s, 0));
+  return clamp01(0.5 - (d - DIGIT_T / 2));
+}
+
 export class Engine {
   constructor(seed = 1) {
     this.rng = (seed >>> 0) || 1;
@@ -139,13 +158,32 @@ export class Engine {
     this.wander = false; this.wanderX = 0; this.wanderY = 0; this.nextWander = 0;
     this.eyes = [{}, {}];
     this.moodSince = 0;
-    this.faceVersion = 0;
+    this.fullVersion = 1;   // bumps whenever the whole screen must be redrawn
+    this.pomoActive = false; this.timerShown = false;
+    this.pomoEnd = 0; this.pomoTotalMs = 0; this.timerUntil = 0; this.timerSecs = 0; this.timerFrac = 0;
     this.setColors(DEFAULT_FACE_COLOR, DEFAULT_EYE_COLOR);
   }
+  // ---- pomodoro (same as eyes.cpp): the countdown runs in the engine ----
+  setPomodoro(now, secondsLeft, totalSeconds) {
+    now >>>= 0;
+    if (!secondsLeft) { this.pomoActive = false; this.timerUntil = 0; return; }
+    this.pomoActive = true;
+    this.pomoEnd = (now + secondsLeft * 1000) >>> 0;
+    this.pomoTotalMs = (totalSeconds || secondsLeft) * 1000;
+  }
+  flashTimer(now, ms = 2000) {
+    if (!this.pomoActive) return;
+    this.timerUntil = ((now >>> 0) + ms) | 1;
+  }
+  pomodoroSecondsLeft(now) {
+    if (!this.pomoActive || reached(now >>> 0, this.pomoEnd)) return 0;
+    return Math.trunc((((this.pomoEnd - (now >>> 0)) >>> 0) + 999) / 1000);
+  }
+  get pomodoroActive() { return this.pomoActive; }
   // colors as 0xRRGGBB: face = the screen (and the pupils), eye = the eyes. Same math as eyes.cpp.
   setColors(face, eye) {
     face &= 0xFFFFFF; eye &= 0xFFFFFF;
-    if (face !== this.face) this.faceVersion++;
+    if (face !== this.face || (this.timerShown && eye !== this.eye)) this.fullVersion++;
     this.face = face; this.eye = eye;
     this.faceR = ((face >> 16) & 0xFF) * 31 / 255; this.faceG = ((face >> 8) & 0xFF) * 63 / 255; this.faceB = (face & 0xFF) * 31 / 255;
     this.eyeR = ((eye >> 16) & 0xFF) * 31 / 255; this.eyeG = ((eye >> 8) & 0xFF) * 63 / 255; this.eyeB = (eye & 0xFF) * 31 / 255;
@@ -255,10 +293,55 @@ export class Engine {
       e.x0 = Math.floor(e.cx - hw); e.x1 = Math.ceil(e.cx + hw);
       e.y0 = Math.floor(e.cy - hh); e.y1 = Math.ceil(e.cy + hh);
     }
+
+    // pomodoro: when time's up, show 00:00 for 3 s
+    if (this.pomoActive && reached(now, this.pomoEnd)) { this.pomoActive = false; this.timerUntil = (now + 3000) | 1; }
+    let shown = this.timerUntil !== 0 && !reached(now, this.timerUntil);
+    if (!shown) this.timerUntil = 0;
+    const secs = this.pomodoroSecondsLeft(now);
+    if (shown !== this.timerShown || (shown && secs !== this.timerSecs)) this.fullVersion++;
+    this.timerShown = shown;
+    this.timerSecs = secs;
+    this.timerFrac = this.pomoTotalMs ? Math.min(1, Math.fround(secs * 1000 / this.pomoTotalMs)) : 0;
+  }
+
+  shadeTimer(px, py) {
+    const x = px + 0.5 - CX, y = py + 0.5 - CY;
+    let a = 0;
+    const r = len(x, y);
+    const ring = clamp01(0.5 - (Math.abs(r - RING_R) - RING_HALF));
+    if (ring > 0) {
+      let ang = Math.atan2(x, -y);
+      if (ang < 0) ang += 6.2831853;
+      a = ring * (ang <= this.timerFrac * 6.2831853 ? 1 : RING_DIM);
+    }
+    const inner = COLON_W / 2 + DIGIT_W / 2, outer = COLON_W / 2 + DIGIT_W + DIGIT_GAP + DIGIT_W / 2;
+    if (Math.abs(y) <= DIGIT_H / 2 + 2 && Math.abs(x) <= outer + DIGIT_W / 2 + 2) {
+      const mm = Math.min(99, Math.trunc(this.timerSecs / 60)), ss = this.timerSecs % 60;
+      const digits = [Math.trunc(mm / 10), mm % 10, Math.trunc(ss / 10), ss % 10];
+      const centers = [-outer, -inner, inner, outer];
+      const i = x < -(inner + outer) / 2 ? 0 : x < 0 ? 1 : x < (inner + outer) / 2 ? 2 : 3;
+      a = Math.max(a, digitCoverage(digits[i], x, y, centers[i]));
+      if (Math.abs(x) < COLON_W / 2) {
+        const dc = Math.min(len(x, y + DIGIT_H * 0.2), len(x, y - DIGIT_H * 0.2)) - DIGIT_T * 0.6;
+        a = Math.max(a, clamp01(0.5 - dc));
+      }
+    }
+    return this.blend(a, 0);
+  }
+
+  blend(alpha, crease) {
+    if (alpha <= 0) return this.face565;
+    const er = this.eyeR + (this.eyeR * CREASE_DARKEN - this.eyeR) * crease;
+    const eg = this.eyeG + (this.eyeG * CREASE_DARKEN - this.eyeG) * crease;
+    const eb = this.eyeB + (this.eyeB * CREASE_DARKEN - this.eyeB) * crease;
+    const r = this.faceR + (er - this.faceR) * alpha, g = this.faceG + (eg - this.faceG) * alpha, b = this.faceB + (eb - this.faceB) * alpha;
+    return (Math.trunc(r + 0.5) << 11) | (Math.trunc(g + 0.5) << 5) | Math.trunc(b + 0.5);
   }
 
   // RGB565 colour of logical pixel (px, py), exactly like Engine::shade on the board
   shade(px, py) {
+    if (this.timerShown) return this.shadeTimer(px, py);
     let alpha = 0, crease = 0;
     for (const e of this.eyes) {
       if (px < e.x0 || px > e.x1 || py < e.y0 || py > e.y1) continue;
@@ -274,12 +357,7 @@ export class Engine {
       }
       if (al > alpha) { alpha = al; crease = c; }
     }
-    if (alpha <= 0) return this.face565;
-    const er = this.eyeR + (this.eyeR * CREASE_DARKEN - this.eyeR) * crease;
-    const eg = this.eyeG + (this.eyeG * CREASE_DARKEN - this.eyeG) * crease;
-    const eb = this.eyeB + (this.eyeB * CREASE_DARKEN - this.eyeB) * crease;
-    const r = this.faceR + (er - this.faceR) * alpha, g = this.faceG + (eg - this.faceG) * alpha, b = this.faceB + (eb - this.faceB) * alpha;
-    return (Math.trunc(r + 0.5) << 11) | (Math.trunc(g + 0.5) << 5) | Math.trunc(b + 0.5);
+    return this.blend(alpha, crease);
   }
 }
 
@@ -288,6 +366,8 @@ export class Mirror {
   constructor(engine) { this.e = engine; this.override = null; this.held = false; }
   // any touch: the welcome-back smile while the finger is down, plus 2.5 s after it lifts
   touch(kind, now) {
+    if (kind === 'touch' && this.e.pomodoroActive) { this.e.flashTimer(Math.floor(now), 2000); return; }   // studying: show the time left
+    if (kind === 'release' && !this.held) return;
     if (kind === 'touch') { this.held = true; this.override = { mood: HAPPY, until: now }; }
     else if (kind === 'release') { this.held = false; if (this.override) this.override.until = now + 2500; }
   }
@@ -319,8 +399,8 @@ export class ScreenPreview {
   draw(engine) {
     const boxes = engine.eyes.map((e) => [e.x0, e.y0, e.x1, e.y1]);
     let rects = this.prev.concat(boxes);
-    if (engine.faceVersion !== this.drawnFace) {   // screen color changed: redraw everything
-      this.drawnFace = engine.faceVersion;
+    if (engine.fullVersion !== this.drawnVersion) {   // screen color / timer screen changed: redraw everything
+      this.drawnVersion = engine.fullVersion;
       rects = [[0, 0, SCREEN - 1, SCREEN - 1]];
     }
     for (const [x0, y0, x1, y1] of rects) {

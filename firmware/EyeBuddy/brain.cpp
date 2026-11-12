@@ -13,6 +13,15 @@ void Brain::onLine(const char* line, uint32_t now) {
     if (emit_) emit_("HELLO EyeBuddy 2");
     return;
   }
+  unsigned left = 0, total = 0;
+  if (line[0] == 'M' && sscanf(line, "M %u %u", &left, &total) >= 1) {   // pomodoro start / sync / stop
+    eng_->setPomodoro(now, left, total);
+    return;
+  }
+  if (line[0] == 'S' && (line[1] == 0 || line[1] == '\r')) {   // show the time left now
+    eng_->flashTimer(now, 2000);
+    return;
+  }
   unsigned face = 0, eye = 0;
   if (line[0] == 'K' && sscanf(line, "K %6x %6x", &face, &eye) == 2) {   // colors from the website
     eng_->setColors(face, eye);
@@ -45,18 +54,21 @@ void Brain::overrideFor(Mood m, float lx, float ly, uint32_t until) {
 
 // Any touch = the "welcome back" smile, right away, for as long as the finger stays plus 2.5 s.
 void Brain::onTouch(bool down, int x, int y, uint32_t now) {
-  if (down && !down_) {
+  if (down && !down_ && eng_->pomodoroActive()) {   // studying: a touch shows the time left instead
+    down_ = true;
+    eng_->flashTimer(now, 2000);
+    if (emit_) emit_("T touch");
+  } else if (down && !down_) {
     down_ = true;
     overrideHeld_ = true;
     overrideFor(HAPPY, toLook(x), toLook(y), now);
     if (emit_) emit_("T touch");
-  } else if (down) {
+  } else if (down && override_) {
     overrideX_ = toLook(x);   // eyes follow the finger (when no laptop is driving the gaze)
     overrideY_ = toLook(y);
-  } else if (down_) {
+  } else if (!down && down_) {
     down_ = false;
-    overrideHeld_ = false;
-    overrideUntil_ = now + AFTER_TOUCH_MS;
+    if (overrideHeld_) { overrideHeld_ = false; overrideUntil_ = now + AFTER_TOUCH_MS; }
     if (emit_) emit_("T release");
   }
 }

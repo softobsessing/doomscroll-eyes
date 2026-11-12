@@ -51,8 +51,17 @@ class Engine {
   void setColors(uint32_t face, uint32_t eye);
   uint32_t faceColor() const { return face_; }
   uint32_t eyeColor() const { return eyeRgb_; }
-  uint32_t faceVersion() const { return faceVersion_; }   // bumps when the screen color changes (full redraw)
   uint16_t faceRgb565() const { return face565_; }
+
+  // Pomodoro. The countdown runs here, so the board keeps time even with no website connected.
+  void setPomodoro(uint32_t nowMs, uint32_t secondsLeft, uint32_t totalSeconds);   // secondsLeft 0 = stop
+  void flashTimer(uint32_t nowMs, uint32_t ms = 2000);   // show the time left for ms, then the eyes again
+  bool pomodoroActive() const { return pomoActive_; }
+  uint32_t pomodoroSecondsLeft(uint32_t nowMs) const;
+  bool timerShown() const { return timerShown_; }
+
+  // Bumps whenever the whole screen must be redrawn (screen color, timer screen on/off/tick).
+  uint32_t fullVersion() const { return fullVersion_; }
 
   float jitterX() const { return jitX_; }   // current small glance offset (the web app sends it along)
   float jitterY() const { return jitY_; }
@@ -90,11 +99,18 @@ class Engine {
   Eye eye_[2] = {};
 
   // colors (channel values in RGB565 units: 0..31 / 0..63 / 0..31)
-  uint32_t face_ = DEFAULT_FACE_COLOR, eyeRgb_ = DEFAULT_EYE_COLOR, faceVersion_ = 1;
+  uint32_t face_ = DEFAULT_FACE_COLOR, eyeRgb_ = DEFAULT_EYE_COLOR, fullVersion_ = 1;
   float faceR_ = 0, faceG_ = 0, faceB_ = 0, eyeR_ = 29, eyeG_ = 49, eyeB_ = 8;
   uint16_t face565_ = 0;
 
   uint32_t moodSince_ = 0;   // when the current mood took over (drives the surprised growth)
+
+  // pomodoro + timer screen
+  bool pomoActive_ = false, timerShown_ = false;
+  uint32_t pomoEnd_ = 0, pomoTotalMs_ = 0, timerUntil_ = 0, timerSecs_ = 0;
+  float timerFrac_ = 0;
+  uint16_t shadeTimer(int px, int py) const;
+  uint16_t blend(float alpha, float crease) const;
 };
 
 }  // namespace eyes
