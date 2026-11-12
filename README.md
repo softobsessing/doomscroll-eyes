@@ -45,7 +45,9 @@ as a toast ("you booped it").
 | laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad` |
 | laptop → board | `P` | ping |
 | board → laptop | `HELLO EyeBuddy 1` | on boot and in reply to `P` |
-| board → laptop | `T touch` / `T release` | finger down / up (board smiles while touched + 2.5 s) |
+| board → laptop | `T touch` / `T release` | finger down / up (RoboEyes: a tap looks around and flips the colors) |
+| board → laptop | `C light` / `C dark` | RoboEyes' current colors: white face / black face (on `HELLO` and after each tap); the preview wipes to match |
+| laptop → board | `B` / `B2` | blink now / double blink (the preview is the blink clock) |
 
 `lookX`, `lookY` are integers from −100 to 100, with 0,0 at the centre (and when no face is seen).
 Directions are on the board's screen **as the user sees it**: +X = pupils toward the right edge,
@@ -103,13 +105,31 @@ Under the status: **Auto** (the camera decides) or one of **focused / welcome ba
 Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
 
 ## Board firmware
-Source in [`firmware/EyeBuddy`](firmware/EyeBuddy). Ready-made `EyeBuddy-firmware.bin` is on the
-[releases page](https://github.com/softobsessing/doomscroll-eyes/releases): flash it at 0x0 with
-https://espressif.github.io/esptool-js/ in Chrome.
+The board runs **RoboEyes** (repo `softobsessing/RoboEyes`): the round screen is a white 3D ball and the eyes
+are two pill-shaped holes in it. The moods reshape the eyelids:
+
+| mood | eyes |
+|---|---|
+| focused (`neutral`) | the reference pills |
+| welcome back (`happy`) | arches, `^ ^` |
+| side-eye (`side`) | flat, half-closed upper lids |
+| disappointed (`sad`) | droopy outer corners, head dipped |
+
+A tap on the board flips its colors (black face, white eyes) with a circular wipe and a look-around.
+Flash the RoboEyes `.bin` at 0x0 with https://espressif.github.io/esptool-js/ in Chrome, or upload it from the
+Arduino IDE. The older EyeBuddy firmware (yellow eyes) is still in [`firmware/EyeBuddy`](firmware/EyeBuddy) and speaks
+the same protocol, but the preview no longer looks like it.
 
 ## Screen preview
 The round "EyeBuddy's screen" card shows exactly what the board shows, live, even with no board connected.
-`eyes.js` is a line-for-line port of the firmware's `EyeBuddy/eyes.cpp`, fed the same mood/look values the app sends
-(and it reacts to the board's touch events too). While connected the preview is the clock: its blinks are sent as `B` /
-`B2` and its small glances ride along in the `E` look values, so the board blinks and moves at the same moment. If you change shapes or timings in `eyes.cpp`, change `eyes.js` too and run
-`node test/eyes_port.test.mjs`, which checks the two pixel by pixel (after `cd tools/eyebuddy_preview && ./preview stills out/stills`).
+`eyes.js` is a line-for-line port of RoboEyes' `eyes_render.h` + `eyes_anim.h`, fed the same mood/look values the app
+sends (and it reacts to the board's touch and color lines too). While connected the preview is the clock: its blinks
+are sent as `B` / `B2` and its small glances ride along in the `E` look values, so the board blinks and moves at the
+same moment. If you change shapes or timings in the firmware, change `eyes.js` too and run the pixel test:
+
+```sh
+# in the RoboEyes repo
+clang++ -O2 -std=c++17 -o parity extras/parity/parity.cpp && ./parity /tmp/parity_out
+# here
+node test/eyes_port.test.mjs /tmp/parity_out
+```
