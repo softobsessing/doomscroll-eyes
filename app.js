@@ -128,7 +128,7 @@ el.btnUsbAny.onclick = () => connectWith(usb, { anyPort: true });
 el.btnBle.onclick = () => (ble.connected || ble.state === 'reconnecting' ? ble.disconnect() : connectWith(ble));
 
 const TOUCH_TOASTS = {
-  touch: 'you booped it: colors flipped',
+  touch: 'EyeBuddy is happy to see you',
   release: 'EyeBuddy liked that',
 };
 
@@ -138,10 +138,8 @@ function handleBoardLine(line) {
     boardHello = `${parts[1] || 'board'} v${parts[2] || '?'}`; // "HELLO EyeBuddy 1" -> "EyeBuddy v1"
     if (link) renderPill({ state: link.state, kind: link.kind });
   } else if (parts[0] === 'T' && parts[1]) {
-    mirror.touch(parts[1], performance.now());   // board was touched: preview looks around too
+    mirror.touch(parts[1], performance.now());   // board was touched: preview reacts the same way
     toast(TOUCH_TOASTS[parts[1]] || `touch: ${parts[1]}`);
-  } else if (parts[0] === 'C' && parts[1]) {
-    mirror.color(parts[1], performance.now());   // board's colors ("C dark" after a tap, "C light"): preview wipes to match
   } else if (parts[0] === 'P') {
     // ping reply; nothing to show
   } else {
@@ -174,8 +172,7 @@ function sendNow() {
 }
 
 // ------------------------------------------------------------------ live preview of the board's screen
-// Same eye code as the firmware (eyes.js is a port of RoboEyes' eyes_render.h + eyes_anim.h),
-// fed the same mood/look we send.
+// Same eye code as the firmware (eyes.js is a port of eyes.cpp), fed the same mood/look we send.
 const eyeEngine = new EyeEngine((Math.random() * 2 ** 32) >>> 0);
 const mirror = new Mirror(eyeEngine);
 const screenPreview = new ScreenPreview($('screen'));
