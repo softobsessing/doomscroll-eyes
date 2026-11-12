@@ -45,7 +45,7 @@ main {
   padding: 16px 24px; max-width: 1100px; margin: 0 auto;
 }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
-.tuning, .status { grid-column: 1 / -1; }
+.tuning, .status, .colors { grid-column: 1 / -1; }
 .screen { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .screen .label { align-self: flex-start; }
 /* round AMOLED behind a grey bezel, like the character's visor */
@@ -113,3 +113,27 @@ table.signals { width: 100%; border-collapse: collapse; font-size: 13px; font-va
 .ico-side::before { left: 0; } .ico-side::after { right: 0; }
 .ico-sad::before, .ico-sad::after { width: 10px; height: 5px; border-radius: 0 0 6px 6px; transform: translateY(-30%); }
 .ico-sad::before { left: 0; transform: translateY(-30%) rotate(-8deg); } .ico-sad::after { right: 0; transform: translateY(-30%) rotate(8deg); }
+
+/* surprised: two tall ovals */
+.ico-wow::before, .ico-wow::after { width: 9px; height: 13px; border-radius: 50%; transform: translateY(-50%); }
+.ico-wow::before { left: 2px; } .ico-wow::after { right: 2px; }
+#mood[data-mood="wow"] { color: var(--accent); }
+
+/* colors card */
+.colors-grid { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; margin-top: 8px; }
+.wheel-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+#wheel { width: 240px; height: 240px; touch-action: none; cursor: crosshair; border-radius: 50%; }
+.bright { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.bright input { width: 170px; }
+.color-side { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 12px; }
+.color-target { display: flex; gap: 8px; }
+.color-target button { display: inline-flex; align-items: center; gap: 8px; }
+.sw { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,.25); display: inline-block; }
+.hex { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.hex input { font: inherit; font-family: ui-monospace, Menlo, monospace; width: 96px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.colors .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.saved { display: flex; flex-wrap: wrap; gap: 10px; min-height: 44px; align-items: center; }
+.saved-item { position: relative; }
+.saved-face { width: 44px; height: 44px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; border: 2px solid var(--line); }
+.saved-face span { width: 9px; height: 9px; border-radius: 50%; }
+.saved-del { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0; border-radius: 50%; font-size: 13px; line-height: 1; background: #fff; color: var(--muted); }

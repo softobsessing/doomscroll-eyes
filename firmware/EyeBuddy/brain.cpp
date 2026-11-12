@@ -10,7 +10,12 @@ static float toLook(int v) { return (v - SCREEN / 2) / (float)(SCREEN / 2); }
 
 void Brain::onLine(const char* line, uint32_t now) {
   if (line[0] == 'P' && (line[1] == 0 || line[1] == '\r')) {
-    if (emit_) emit_("HELLO EyeBuddy 1");
+    if (emit_) emit_("HELLO EyeBuddy 2");
+    return;
+  }
+  unsigned face = 0, eye = 0;
+  if (line[0] == 'K' && sscanf(line, "K %6x %6x", &face, &eye) == 2) {   // colors from the website
+    eng_->setColors(face, eye);
     return;
   }
   if (line[0] == 'B' && (line[1] == 0 || line[1] == '2' || line[1] == '\r')) {   // laptop's blink clock

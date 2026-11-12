@@ -2,8 +2,10 @@
 // so the on-screen preview shows exactly what the round AMOLED shows. If you change the shapes or
 // timings in eyes.cpp, change them here too (test/eyes_port.test.mjs compares the two).
 
-export const MOODS = ['neutral', 'happy', 'side', 'sad'];
-const NEUTRAL = 0, HAPPY = 1, SIDE = 2, SAD = 3;
+export const MOODS = ['neutral', 'happy', 'side', 'sad', 'wow'];   // wow = surprised
+const NEUTRAL = 0, HAPPY = 1, SIDE = 2, SAD = 3, WOW = 4;
+export const DEFAULT_EYE_COLOR = 0xEFC742, DEFAULT_FACE_COLOR = 0x000000;
+const CREASE_DARKEN = 0.66;
 export const SCREEN = 466;
 
 // spacing, gazeX, gazeY, halfW, halfH  (same table as eyes.cpp)
@@ -12,7 +14,31 @@ const STYLES = [
   [105, 30, 20, 40, 27],
   [98, 45, 25, 74, 37],
   [100, 30, 15, 70, 48],
+  [105, 25, 15, 101, 140],   // WOW: spacing/size animate, see WOW_KEYS
 ];
+
+// surprised: the eyes grow through the four reference frames, smallest to biggest (same table as eyes.cpp)
+// t (s), spacing, rx, ry, pupil r, pupil toward nose
+const WOW_KEYS = [
+  [0.00, 89, 53, 35, 3.0, 0],
+  [0.22, 112, 95, 69, 5.0, 58],
+  [0.50, 98, 83, 110, 3.5, 0],
+  [0.85, 105, 101, 140, 3.0, 0],
+];
+const catmull = (p0, p1, p2, p3, u) =>
+  0.5 * (2 * p1 + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u + (3 * p1 - p0 - 3 * p2 + p3) * u * u * u);
+function wowAt(t) {
+  const n = WOW_KEYS.length;
+  const pack = (k) => ({ spacing: k[1], rx: k[2], ry: k[3], pupilR: k[4], pupilIn: k[5] });
+  if (t <= WOW_KEYS[0][0]) return pack(WOW_KEYS[0]);
+  if (t >= WOW_KEYS[n - 1][0]) return pack(WOW_KEYS[n - 1]);
+  let i = 0;
+  while (t >= WOW_KEYS[i + 1][0]) i++;
+  const k0 = WOW_KEYS[i > 0 ? i - 1 : 0], k1 = WOW_KEYS[i], k2 = WOW_KEYS[i + 1], k3 = WOW_KEYS[i + 2 < n ? i + 2 : n - 1];
+  const u = (t - k1[0]) / (k2[0] - k1[0]);
+  const c = (j) => catmull(k0[j], k1[j], k2[j], k3[j], u);
+  return { spacing: c(1), rx: c(2), ry: c(3), pupilR: Math.max(1.5, c(4)), pupilIn: Math.max(0, c(5)) };
+}
 const DOT_R = 36;
 const HAPPY_HALF_W = 34, HAPPY_HALF_H = 21, HAPPY_STROKE = 6.0;
 const SIDE_R = 74;
@@ -68,8 +94,9 @@ function sdBezier(px, py, ax, ay, bx, by, cx, cy) {
 }
 
 // returns [distance, creaseCoverage]
-function shapeDistance(shape, x, y, s, side) {
-  switch (shape) {
+function shapeDistance(e, x, y) {
+  const s = e.squash, side = e.side;
+  switch (e.shape) {
     case NEUTRAL: return [sdEllipse(x, y, DOT_R, Math.max(DOT_R * s, MIN_CLOSED_H / 2)), 0];
     case HAPPY: {
       const h = HAPPY_HALF_H * s;
@@ -92,6 +119,7 @@ function shapeDistance(shape, x, y, s, side) {
       const ends = clamp01((CREASE_HALF_LEN - Math.abs(qx)) / 8);
       return [d, clamp01(0.5 - dc) * ends * clamp01((s - 0.5) / 0.3)];
     }
+    case WOW: return [sdEllipse(x, y, e.rx, Math.max(e.ry * s, MIN_CLOSED_H / 2)), 0];
   }
   return [1e9, 0];
 }
@@ -110,6 +138,18 @@ export class Engine {
     this.jitX = 0; this.jitY = 0; this.nextJitter = 0;
     this.wander = false; this.wanderX = 0; this.wanderY = 0; this.nextWander = 0;
     this.eyes = [{}, {}];
+    this.moodSince = 0;
+    this.faceVersion = 0;
+    this.setColors(DEFAULT_FACE_COLOR, DEFAULT_EYE_COLOR);
+  }
+  // colors as 0xRRGGBB: face = the screen (and the pupils), eye = the eyes. Same math as eyes.cpp.
+  setColors(face, eye) {
+    face &= 0xFFFFFF; eye &= 0xFFFFFF;
+    if (face !== this.face) this.faceVersion++;
+    this.face = face; this.eye = eye;
+    this.faceR = ((face >> 16) & 0xFF) * 31 / 255; this.faceG = ((face >> 8) & 0xFF) * 63 / 255; this.faceB = (face & 0xFF) * 31 / 255;
+    this.eyeR = ((eye >> 16) & 0xFF) * 31 / 255; this.eyeG = ((eye >> 8) & 0xFF) * 63 / 255; this.eyeB = (eye & 0xFF) * 31 / 255;
+    this.face565 = (Math.trunc(this.faceR + 0.5) << 11) | (Math.trunc(this.faceG + 0.5) << 5) | Math.trunc(this.faceB + 0.5);
   }
   rand32() {
     let r = this.rng;
@@ -136,7 +176,7 @@ export class Engine {
   startBlink(now) { this.blinkPhase = 1; this.blinkStart = now; this.swapped = false; this.doubleBlink = false; }
   blinkOpenness(now) {
     let t = (now - this.blinkStart) >>> 0;
-    if (!this.swapped && t >= BLINK_CLOSE) { this.mood = this.target; this.swapped = true; }   // see eyes.cpp
+    if (!this.swapped && t >= BLINK_CLOSE) { this.mood = this.target; this.swapped = true; this.moodSince = now; }   // see eyes.cpp
     const total = this.doubleBlink ? 2 * BLINK_END + DOUBLE_GAP : BLINK_END;
     if (t >= total) { this.blinkPhase = 0; return 1; }
     if (t >= BLINK_END) {
@@ -155,6 +195,7 @@ export class Engine {
       this.started = true; this.lastMs = now;
       this.nextBlink = (now + Math.trunc(this.randf(1500, 4000))) >>> 0;
       this.nextJitter = this.nextWander = now;
+      this.moodSince = now;
     }
     let dt = ((now - this.lastMs) | 0) / 1000;
     if (dt < 0) dt = 0;
@@ -192,7 +233,12 @@ export class Engine {
     this.lookY += (ty - this.lookY) * a;
 
     const breathe = 1 + 0.018 * Math.sin(now * (6.2831853 / 4200));
-    const [spacing, gazeX, gazeY, halfW, halfH] = STYLES[this.mood];
+    let [spacing, gazeX, gazeY, halfW, halfH] = STYLES[this.mood];
+    let wk = { spacing: 0, rx: 0, ry: 0, pupilR: 0, pupilIn: 0 };
+    if (this.mood === WOW) {
+      wk = wowAt(((now - this.moodSince) >>> 0) / 1000);
+      spacing = wk.spacing; halfW = wk.rx; halfH = wk.ry;
+    }
     for (let i = 0; i < 2; i++) {
       const e = this.eyes[i];
       e.shape = this.mood;
@@ -201,6 +247,10 @@ export class Engine {
       e.cy = CY + this.lookY * gazeY;
       e.scale = breathe;
       e.squash = open;
+      e.rx = wk.rx; e.ry = wk.ry;
+      e.pupilR = wk.pupilR; e.pupilIn = wk.pupilIn;
+      e.pupilDX = this.lookX * wk.rx * 0.25;
+      e.pupilDY = this.lookY * wk.ry * 0.2;
       const hw = halfW * breathe + 3, hh = halfH * breathe + 3;
       e.x0 = Math.floor(e.cx - hw); e.x1 = Math.ceil(e.cx + hw);
       e.y0 = Math.floor(e.cy - hh); e.y1 = Math.ceil(e.cy + hh);
@@ -213,13 +263,23 @@ export class Engine {
     for (const e of this.eyes) {
       if (px < e.x0 || px > e.x1 || py < e.y0 || py > e.y1) continue;
       const x = (px + 0.5 - e.cx) / e.scale, y = (py + 0.5 - e.cy) / e.scale;
-      const [dl, c] = shapeDistance(e.shape, x, y, e.squash, e.side);
-      const al = clamp01(0.5 - dl * e.scale);
+      const [dl, c] = shapeDistance(e, x, y);
+      let al = clamp01(0.5 - dl * e.scale);
+      if (e.shape === WOW && al > 0) {   // tiny pupil: a hole showing the screen color
+        const pr = e.pupilR * clamp01((e.squash - 0.35) / 0.35);
+        if (pr > 0) {
+          const dp = (len(x - (-e.side * e.pupilIn + e.pupilDX), y - e.pupilDY * e.squash) - pr) * e.scale;
+          al *= 1 - clamp01(0.5 - dp);
+        }
+      }
       if (al > alpha) { alpha = al; crease = c; }
     }
-    if (alpha <= 0) return 0;
-    const r = 29 + (20 - 29) * crease, g = 49 + (30 - 49) * crease, b = 8 + (6 - 8) * crease;
-    return (((r * alpha + 0.5) | 0) << 11) | (((g * alpha + 0.5) | 0) << 5) | ((b * alpha + 0.5) | 0);
+    if (alpha <= 0) return this.face565;
+    const er = this.eyeR + (this.eyeR * CREASE_DARKEN - this.eyeR) * crease;
+    const eg = this.eyeG + (this.eyeG * CREASE_DARKEN - this.eyeG) * crease;
+    const eb = this.eyeB + (this.eyeB * CREASE_DARKEN - this.eyeB) * crease;
+    const r = this.faceR + (er - this.faceR) * alpha, g = this.faceG + (eg - this.faceG) * alpha, b = this.faceB + (eb - this.faceB) * alpha;
+    return (Math.trunc(r + 0.5) << 11) | (Math.trunc(g + 0.5) << 5) | Math.trunc(b + 0.5);
   }
 }
 
@@ -258,7 +318,12 @@ export class ScreenPreview {
   }
   draw(engine) {
     const boxes = engine.eyes.map((e) => [e.x0, e.y0, e.x1, e.y1]);
-    for (const [x0, y0, x1, y1] of this.prev.concat(boxes)) {
+    let rects = this.prev.concat(boxes);
+    if (engine.faceVersion !== this.drawnFace) {   // screen color changed: redraw everything
+      this.drawnFace = engine.faceVersion;
+      rects = [[0, 0, SCREEN - 1, SCREEN - 1]];
+    }
+    for (const [x0, y0, x1, y1] of rects) {
       const ax = Math.max(0, x0), ay = Math.max(0, y0), bx = Math.min(SCREEN - 1, x1), by = Math.min(SCREEN - 1, y1);
       for (let y = ay; y <= by; y++) {
         let i = y * SCREEN + ax;

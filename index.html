@@ -72,8 +72,33 @@
           <button type="button" data-expr="happy" aria-pressed="false"><span class="ico ico-happy"></span>welcome back</button>
           <button type="button" data-expr="side" aria-pressed="false"><span class="ico ico-side"></span>side-eye</button>
           <button type="button" data-expr="sad" aria-pressed="false"><span class="ico ico-sad"></span>disappointed</button>
+          <button type="button" data-expr="wow" aria-pressed="false"><span class="ico ico-wow"></span>surprised</button>
         </div>
         <p id="exprNote" class="muted small">Auto: the camera decides. Press an expression to hold it on the board until you press Auto.</p>
+      </div>
+    </section>
+
+    <section class="card colors">
+      <div class="label">colors</div>
+      <div class="colors-grid">
+        <div class="wheel-wrap">
+          <canvas id="wheel" width="240" height="240" aria-label="Color wheel: drag to pick a color"></canvas>
+          <label class="bright">brightness <input id="bright" type="range" min="0" max="100" value="100"></label>
+        </div>
+        <div class="color-side">
+          <div class="color-target" id="colorTarget" role="group" aria-label="What to color">
+            <button type="button" data-target="eye" aria-pressed="true"><span class="sw" id="swEye"></span>Eyes</button>
+            <button type="button" data-target="face" aria-pressed="false"><span class="sw" id="swFace"></span>Screen</button>
+          </div>
+          <label class="hex">hex <input id="hex" type="text" maxlength="7" spellcheck="false" autocomplete="off"></label>
+          <div class="actions">
+            <button id="btnSaveColors" type="button">Save these colors</button>
+            <button id="btnResetColors" type="button" class="link-btn">Reset to yellow on black</button>
+          </div>
+          <div class="label">saved</div>
+          <div id="savedColors" class="saved"></div>
+          <p class="muted small">Changes show on the preview and the board right away. The board remembers the last colors, even after a restart.</p>
+        </div>
       </div>
     </section>
 

@@ -4,7 +4,7 @@
 
 namespace eyes {
 
-static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad"};
+static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad", "wow"};
 const char* moodName(Mood m) { return m < MOOD_COUNT ? NAMES[m] : "?"; }
 bool parseMood(const char* s, Mood* out) {
   for (int i = 0; i < MOOD_COUNT; i++)
@@ -23,7 +23,43 @@ static const Style STYLES[MOOD_COUNT] = {
     /* HAPPY  ^ ^        */ {105, 30, 20, 40, 27},
     /* SIDE   half-moons */ {98, 45, 25, 74, 37},
     /* SAD    heavy lids */ {100, 30, 15, 70, 48},
+    /* WOW    surprised  */ {105, 25, 15, 101, 140},   // spacing/size animate, see WOW_KEYS
 };
+
+// ---- surprised: the eyes grow through the four reference frames (logical px), smallest to biggest ----
+struct WowKey { float t, spacing, rx, ry, pupilR, pupilIn; };
+static const WowKey WOW_KEYS[] = {
+    // t (s)  spacing  rx   ry   pupil r  pupil toward nose
+    {0.00f,  89,  53,  35, 3.0f,  0},   // small wide ovals
+    {0.22f, 112,  95,  69, 5.0f, 58},   // wider, pupils glance toward the nose
+    {0.50f,  98,  83, 110, 3.5f,  0},   // tall
+    {0.85f, 105, 101, 140, 3.0f,  0},   // huge, nearly touching (then holds)
+};
+constexpr int WOW_N = sizeof(WOW_KEYS) / sizeof(WOW_KEYS[0]);
+
+// Catmull-Rom through the keyframes: one continuous growth, no stops at the frames.
+static float catmull(float p0, float p1, float p2, float p3, float u) {
+  return 0.5f * (2 * p1 + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u + (3 * p1 - p0 - 3 * p2 + p3) * u * u * u);
+}
+static WowKey wowAt(float t) {
+  if (t <= WOW_KEYS[0].t) return WOW_KEYS[0];
+  if (t >= WOW_KEYS[WOW_N - 1].t) return WOW_KEYS[WOW_N - 1];
+  int i = 0;
+  while (t >= WOW_KEYS[i + 1].t) i++;
+  const WowKey& k0 = WOW_KEYS[i > 0 ? i - 1 : 0];
+  const WowKey& k1 = WOW_KEYS[i];
+  const WowKey& k2 = WOW_KEYS[i + 1];
+  const WowKey& k3 = WOW_KEYS[i + 2 < WOW_N ? i + 2 : WOW_N - 1];
+  float u = (t - k1.t) / (k2.t - k1.t);
+  WowKey r;
+  r.t = t;
+  r.spacing = catmull(k0.spacing, k1.spacing, k2.spacing, k3.spacing, u);
+  r.rx = catmull(k0.rx, k1.rx, k2.rx, k3.rx, u);
+  r.ry = catmull(k0.ry, k1.ry, k2.ry, k3.ry, u);
+  r.pupilR = fmaxf(1.5f, catmull(k0.pupilR, k1.pupilR, k2.pupilR, k3.pupilR, u));
+  r.pupilIn = fmaxf(0.f, catmull(k0.pupilIn, k1.pupilIn, k2.pupilIn, k3.pupilIn, u));
+  return r;
+}
 
 constexpr float DOT_R = 36;
 constexpr float HAPPY_HALF_W = 34, HAPPY_HALF_H = 21, HAPPY_STROKE = 6.0f;
@@ -83,9 +119,10 @@ static float sdBezier(float px, float py, float ax, float ay, float bx, float by
 }
 
 // Distance for one eye shape around its visible centre. `crease` gets the lid-line coverage (sad only).
-static float shapeDistance(Mood shape, float x, float y, float s, float side, float* crease) {
+static float shapeDistance(const Eye& e, float x, float y, float* crease) {
   *crease = 0;
-  switch (shape) {
+  const float s = e.squash, side = e.side;
+  switch (e.shape) {
     case NEUTRAL: {
       float ry = fmaxf(DOT_R * s, MIN_CLOSED_H / 2);
       return sdEllipse(x, y, DOT_R, ry);
@@ -116,6 +153,10 @@ static float shapeDistance(Mood shape, float x, float y, float s, float side, fl
       *crease = clamp01(0.5f - dc) * ends * clamp01((s - 0.5f) / 0.3f);
       return d;
     }
+    case WOW: {    // big oval (the pupil is cut out in shade())
+      float ry = fmaxf(e.ry * s, MIN_CLOSED_H / 2);
+      return sdEllipse(x, y, e.rx, ry);
+    }
     default:
       return 1e9f;
   }
@@ -128,14 +169,33 @@ uint16_t Engine::shade(int px, int py) const {
     if (px < e.x0 || px > e.x1 || py < e.y0 || py > e.y1) continue;
     float x = (px + 0.5f - e.cx) / e.scale, y = (py + 0.5f - e.cy) / e.scale;
     float c;
-    float d = shapeDistance(e.shape, x, y, e.squash, e.side, &c) * e.scale;  // screen px
+    float d = shapeDistance(e, x, y, &c) * e.scale;  // screen px
     float a = clamp01(0.5f - d);
+    if (e.shape == WOW && a > 0) {   // tiny pupil: a hole showing the screen color; hides as the eye shuts
+      float pr = e.pupilR * clamp01((e.squash - 0.35f) / 0.35f);
+      if (pr > 0) {
+        float dp = (len(x - (-e.side * e.pupilIn + e.pupilDX), y - e.pupilDY * e.squash) - pr) * e.scale;
+        a *= 1 - clamp01(0.5f - dp);
+      }
+    }
     if (a > alpha) { alpha = a; crease = c; }
   }
-  if (alpha <= 0) return 0;
-  // mix in 5/6-bit channel space, then quantise; alpha 1 gives the exact palette colour
-  float r = 29 + (20 - 29) * crease, g = 49 + (30 - 49) * crease, b = 8 + (6 - 8) * crease;
-  return rgb565((int)(r * alpha + 0.5f), (int)(g * alpha + 0.5f), (int)(b * alpha + 0.5f));
+  if (alpha <= 0) return face565_;
+  // mix in 5/6-bit channel space, then quantise; alpha 1 gives the exact eye colour
+  float er = eyeR_ + (eyeR_ * CREASE_DARKEN - eyeR_) * crease;
+  float eg = eyeG_ + (eyeG_ * CREASE_DARKEN - eyeG_) * crease;
+  float eb = eyeB_ + (eyeB_ * CREASE_DARKEN - eyeB_) * crease;
+  float r = faceR_ + (er - faceR_) * alpha, g = faceG_ + (eg - faceG_) * alpha, b = faceB_ + (eb - faceB_) * alpha;
+  return rgb565((int)(r + 0.5f), (int)(g + 0.5f), (int)(b + 0.5f));
+}
+
+void Engine::setColors(uint32_t face, uint32_t eye) {
+  face &= 0xFFFFFF; eye &= 0xFFFFFF;
+  if (face != face_) faceVersion_++;
+  face_ = face; eyeRgb_ = eye;
+  faceR_ = ((face >> 16) & 0xFF) * 31 / 255.0f; faceG_ = ((face >> 8) & 0xFF) * 63 / 255.0f; faceB_ = (face & 0xFF) * 31 / 255.0f;
+  eyeR_ = ((eye >> 16) & 0xFF) * 31 / 255.0f;   eyeG_ = ((eye >> 8) & 0xFF) * 63 / 255.0f;   eyeB_ = (eye & 0xFF) * 31 / 255.0f;
+  face565_ = rgb565((int)(faceR_ + 0.5f), (int)(faceG_ + 0.5f), (int)(faceB_ + 0.5f));
 }
 
 // ---- animation ----
@@ -145,7 +205,11 @@ uint32_t Engine::rand32() {   // xorshift32
 }
 float Engine::randf(float lo, float hi) { return lo + (hi - lo) * (rand32() & 0xFFFFFF) / (float)0x1000000; }
 
-void Engine::begin(uint32_t seed) { rng_ = seed ? seed : 1; started_ = false; }
+void Engine::begin(uint32_t seed) {
+  rng_ = seed ? seed : 1;
+  started_ = false;
+  setColors(face_, eyeRgb_);
+}
 void Engine::setMood(Mood m) { if (m < MOOD_COUNT) target_ = m; }
 void Engine::setLook(float x, float y) {
   lookTX_ = x < -1 ? -1 : (x > 1 ? 1 : x);
@@ -168,7 +232,7 @@ float Engine::blinkOpenness(uint32_t now) {
   // Swap the mood at the first update after the eyes reach shut. Don't require landing inside the
   // 30 ms shut window: at 50-60 ms per frame every sample skipped it, the mood never changed and the
   // eyes re-blinked forever (looked like a permanent squint).
-  if (!swappedThisBlink_ && t >= BLINK_CLOSE) { mood_ = target_; swappedThisBlink_ = true; }
+  if (!swappedThisBlink_ && t >= BLINK_CLOSE) { mood_ = target_; swappedThisBlink_ = true; moodSince_ = now; }
   uint32_t total = doubleBlink_ ? 2 * BLINK_END + DOUBLE_GAP : BLINK_END;
   if (t >= total) { blinkPhase_ = 0; return 1; }
   if (t >= BLINK_END) {
@@ -203,6 +267,7 @@ void Engine::update(uint32_t now) {
     lastMs_ = now;
     nextBlink_ = now + (uint32_t)randf(1500, 4000);
     nextJitter_ = nextWander_ = now;
+    moodSince_ = now;
   }
   float dt = (int32_t)(now - lastMs_) / 1000.0f;
   if (dt < 0) dt = 0;
@@ -242,15 +307,25 @@ void Engine::update(uint32_t now) {
 
   float breathe = 1 + 0.018f * sinf(now * (6.2831853f / 4200.0f));
   const Style& st = STYLES[mood_];
+  float spacing = st.spacing, halfW = st.halfW, halfH = st.halfH;
+  WowKey wk = {0, 0, 0, 0, 0, 0};
+  if (mood_ == WOW) {
+    wk = wowAt((now - moodSince_) / 1000.0f);
+    spacing = wk.spacing; halfW = wk.rx; halfH = wk.ry;
+  }
   for (int i = 0; i < 2; i++) {
     Eye& e = eye_[i];
     e.shape = mood_;
     e.side = i == 0 ? -1.0f : 1.0f;
-    e.cx = CX + e.side * st.spacing + lookX_ * st.gazeX;
+    e.cx = CX + e.side * spacing + lookX_ * st.gazeX;
     e.cy = CY + lookY_ * st.gazeY;
     e.scale = breathe;
     e.squash = open;
-    float hw = st.halfW * breathe + 3, hh = st.halfH * breathe + 3;
+    e.rx = wk.rx; e.ry = wk.ry;
+    e.pupilR = wk.pupilR; e.pupilIn = wk.pupilIn;
+    e.pupilDX = lookX_ * wk.rx * 0.25f;   // the pupils look where the eyes look
+    e.pupilDY = lookY_ * wk.ry * 0.2f;
+    float hw = halfW * breathe + 3, hh = halfH * breathe + 3;
     e.x0 = (int)floorf(e.cx - hw); e.x1 = (int)ceilf(e.cx + hw);
     e.y0 = (int)floorf(e.cy - hh); e.y1 = (int)ceilf(e.cy + hh);
   }

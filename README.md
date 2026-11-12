@@ -42,9 +42,11 @@ as a toast ("you booped it").
 ### Protocol (ASCII lines, `\n` terminated, same on USB and BLE)
 | direction | line | notes |
 |---|---|---|
-| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad` |
+| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad wow` (`wow` = surprised) |
+| laptop → board | `K <screen> <eyes>` | colors as `RRGGBB`, e.g. `K 000000 EFC742`; sent on connect and live while you drag the color wheel. The board saves them |
+| laptop → board | `B` / `B2` | blink now / double blink (the preview is the blink clock) |
 | laptop → board | `P` | ping |
-| board → laptop | `HELLO EyeBuddy 1` | on boot and in reply to `P` |
+| board → laptop | `HELLO EyeBuddy 2` | on boot and in reply to `P` (v2 = has surprised + colors) |
 | board → laptop | `T touch` / `T release` | finger down / up (board smiles while touched + 2.5 s) |
 
 `lookX`, `lookY` are integers from −100 to 100, with 0,0 at the centre (and when no face is seen).
@@ -52,7 +54,7 @@ Directions are on the board's screen **as the user sees it**: +X = pupils toward
 +Y = pupils toward the bottom edge. The value is the mirror image of your position, so the eyes
 point at you. Move to your left and the pupils move to your left, too. The longest line,
 `E neutral -100 -100\n`, is 20 bytes, so it fits one BLE packet. While a write is in flight,
-older queued `E` frames are dropped in favour of the newest.
+older queued `E` frames (and `K` color lines) are dropped in favour of the newest.
 
 When **Pause tracking** is on, the camera is switched off and the app keeps sending `E neutral 0 0`.
 
@@ -93,14 +95,23 @@ positive roll. To check pitch yourself, tilt your head down and watch the pitch 
 index.html  style.css  app.js     UI + wiring
 vision.js                         FaceLandmarker (GPU, CPU fallback) + signal extraction
 attention.js                      pure classifier + mood state machine (no DOM, time passed in)
+colors.js                         colors card: color wheel, brightness, hex, saved color pairs
 link.js                           Link interface: SerialLink (USB) / BleLink (Nordic UART)
 test/attention.test.mjs           node test/attention.test.mjs
 vendor/                           tasks-vision 0.10.35 bundle + wasm, face_landmarker.task (float16 v1)
 ```
 
 ## Expression buttons
-Under the status: **Auto** (the camera decides) or one of **focused / welcome back / side-eye / disappointed**.
-Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
+Under the status: **Auto** (the camera decides) or one of **focused / welcome back / side-eye / disappointed /
+surprised**. Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
+**surprised** is button-only: the eyes blink, then grow from small wide ovals to huge tall ones with tiny pupils.
+
+## Colors
+The **colors** card sets the eye color and the screen color. Pick **Eyes** or **Screen**, then drag on the wheel
+(hue around, saturation outward), use the brightness slider, or type a hex code. The preview and the board change
+live. **Save these colors** keeps the pair (up to 8) as a little face; click one to use it again, × to remove it.
+**Reset** goes back to yellow on black. The current colors and the saved list live in `localStorage`; the board
+stores the last colors it got, so they survive a restart.
 
 ## Board firmware
 Source in [`firmware/EyeBuddy`](firmware/EyeBuddy). Ready-made `EyeBuddy-firmware.bin` is on the
@@ -111,5 +122,5 @@ https://espressif.github.io/esptool-js/ in Chrome.
 The round "EyeBuddy's screen" card shows exactly what the board shows, live, even with no board connected.
 `eyes.js` is a line-for-line port of the firmware's `EyeBuddy/eyes.cpp`, fed the same mood/look values the app sends
 (and it reacts to the board's touch events too). While connected the preview is the clock: its blinks are sent as `B` /
-`B2` and its small glances ride along in the `E` look values, so the board blinks and moves at the same moment. If you change shapes or timings in `eyes.cpp`, change `eyes.js` too and run
-`node test/eyes_port.test.mjs`, which checks the two pixel by pixel (after `cd tools/eyebuddy_preview && ./preview stills out/stills`).
+`B2` and its small glances ride along in the `E` look values, so the board blinks and moves at the same moment. If you change shapes or timings in `eyes.cpp`, change `eyes.js` too and run the pixel check:
+`clang++ -O2 -std=c++17 -o /tmp/parity firmware/EyeBuddy/extras/parity.cpp firmware/EyeBuddy/eyes.cpp && /tmp/parity /tmp/parity_out && node test/eyes_port.test.mjs /tmp/parity_out`.

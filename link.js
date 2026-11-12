@@ -7,8 +7,9 @@
 //   link.disconnect()
 //
 // Writes are serialized (never two in flight). While a write is in flight, a newer `E ...`
-// line replaces any older queued `E ...` line (stale eye frames are dropped, newest kept);
-// other lines (e.g. `P`) are queued in order and never dropped.
+// line replaces any older queued `E ...` line (stale eye frames are dropped, newest kept), and the
+// same for `K ...` color lines (dragging the color wheel); other lines (e.g. `P`) are queued in
+// order and never dropped.
 
 export const ESPRESSIF_VID = 0x303a;
 export const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -42,6 +43,7 @@ class Link {
     this._statusCbs = [];
     this._busy = false;
     this._pendingE = null;
+    this._pendingK = null;
     this._pendingOther = [];
   }
   onLine(cb) { this._lineCbs.push(cb); return this; }
@@ -52,6 +54,7 @@ class Link {
     if (!this.connected) return;
     if (!line.endsWith('\n')) line += '\n';
     if (line.startsWith('E ')) this._pendingE = line; // keep only the newest eye frame
+    else if (line.startsWith('K ')) this._pendingK = line; // and the newest colors
     else this._pendingOther.push(line);
     this._pump();
   }
@@ -60,9 +63,10 @@ class Link {
     if (this._busy) return;
     this._busy = true;
     try {
-      while (this.connected && (this._pendingOther.length || this._pendingE)) {
+      while (this.connected && (this._pendingOther.length || this._pendingK || this._pendingE)) {
         let line;
         if (this._pendingOther.length) line = this._pendingOther.shift();
+        else if (this._pendingK) { line = this._pendingK; this._pendingK = null; }
         else { line = this._pendingE; this._pendingE = null; }
         try {
           await this._write(line);
@@ -76,7 +80,7 @@ class Link {
     }
   }
 
-  _clearQueue() { this._pendingE = null; this._pendingOther = []; }
+  _clearQueue() { this._pendingE = null; this._pendingK = null; this._pendingOther = []; }
 
   _setStatus(state, detail = '') {
     this.state = state;

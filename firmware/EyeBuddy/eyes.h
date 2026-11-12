@@ -8,16 +8,19 @@
 
 namespace eyes {
 
-enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, MOOD_COUNT };
-const char* moodName(Mood m);              // "neutral", "happy", "side", "sad"
+// WOW = "surprised" (short name so the longest E line still fits one Bluetooth packet)
+enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, WOW, MOOD_COUNT };
+const char* moodName(Mood m);              // "neutral", "happy", "side", "sad", "wow"
 bool parseMood(const char* s, Mood* out);
 
 constexpr int SCREEN = 466;
 
 constexpr uint16_t rgb565(int r5, int g6, int b5) { return (uint16_t)((r5 << 11) | (g6 << 5) | b5); }
-// Picked as exact RGB565 values so the panel shows exactly this (no rounding drift).
-constexpr uint16_t COLOR_EYE    = rgb565(29, 49, 8);   // warm yellow  ~#EFC642
-constexpr uint16_t COLOR_CREASE = rgb565(20, 30, 6);   // lid line on "sad" ~#A57931
+// Default colors (0xRRGGBB). The website can change both; the board remembers them.
+// The yellow maps exactly onto RGB565 (29, 49, 8), so the panel shows it with no rounding drift.
+constexpr uint32_t DEFAULT_EYE_COLOR  = 0xEFC742;   // warm yellow
+constexpr uint32_t DEFAULT_FACE_COLOR = 0x000000;   // black screen
+constexpr float CREASE_DARKEN = 0.66f;              // lid line on "sad" = eye color * this
 
 // One eye, ready to draw this frame.
 struct Eye {
@@ -26,6 +29,8 @@ struct Eye {
   float scale;      // breathing
   float squash;     // 1 = open, 0 = fully closed (blink)
   float side;       // -1 = left eye on screen, +1 = right eye
+  // surprised only: the oval (half sizes) and its tiny pupil (radius, offset toward the nose, look shift)
+  float rx, ry, pupilR, pupilIn, pupilDX, pupilDY;
   int x0, y0, x1, y1;  // bounding box incl. anti-aliasing, inclusive
 };
 
@@ -41,6 +46,13 @@ class Engine {
   bool blinkNow(uint32_t nowMs, bool twice);   // start a blink now (ignored mid-blink / mid-switch)
   bool takeBlinkEvent(bool* twice);            // true once each time this engine blinked on its own
   void update(uint32_t nowMs);
+
+  // Colors as 0xRRGGBB. face = the screen (and the pupils), eye = the eyes.
+  void setColors(uint32_t face, uint32_t eye);
+  uint32_t faceColor() const { return face_; }
+  uint32_t eyeColor() const { return eyeRgb_; }
+  uint32_t faceVersion() const { return faceVersion_; }   // bumps when the screen color changes (full redraw)
+  uint16_t faceRgb565() const { return face565_; }
 
   float jitterX() const { return jitX_; }   // current small glance offset (the web app sends it along)
   float jitterY() const { return jitY_; }
@@ -76,6 +88,13 @@ class Engine {
   uint32_t nextWander_ = 0;
 
   Eye eye_[2] = {};
+
+  // colors (channel values in RGB565 units: 0..31 / 0..63 / 0..31)
+  uint32_t face_ = DEFAULT_FACE_COLOR, eyeRgb_ = DEFAULT_EYE_COLOR, faceVersion_ = 1;
+  float faceR_ = 0, faceG_ = 0, faceB_ = 0, eyeR_ = 29, eyeG_ = 49, eyeB_ = 8;
+  uint16_t face565_ = 0;
+
+  uint32_t moodSince_ = 0;   // when the current mood took over (drives the surprised growth)
 };
 
 }  // namespace eyes

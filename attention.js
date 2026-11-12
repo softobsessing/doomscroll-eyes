@@ -9,6 +9,7 @@ export const MOOD_LABELS = {
   happy: 'welcome back',
   side: 'side-eye',
   sad: 'disappointed',
+  wow: 'surprised',   // button only (the camera never picks it); short name keeps E lines in one BLE packet
 };
 
 export const DEFAULT_THRESHOLDS = {

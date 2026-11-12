@@ -1,0 +1,56 @@
+// Renders a scripted scenario with the board's eye engine (eyes.cpp), so the website's
+// preview (eyes.js) can be checked against it pixel by pixel. From the repo root:
+//   clang++ -O2 -std=c++17 -o /tmp/parity firmware/EyeBuddy/extras/parity.cpp firmware/EyeBuddy/eyes.cpp
+//   /tmp/parity /tmp/parity_out && node test/eyes_port.test.mjs /tmp/parity_out
+// The same script is in test/eyes_port.test.mjs. Keep the two in sync.
+// (Arduino ignores this folder; it only builds the sketch folder itself.)
+#include <cstdio>
+#include <cmath>
+#include <string>
+#include <vector>
+#include "../eyes.h"
+using namespace eyes;
+
+static void dump(const Engine &e, const std::string &path) {
+  std::vector<uint16_t> f(SCREEN * SCREEN);
+  for (int y = 0; y < SCREEN; y++)
+    for (int x = 0; x < SCREEN; x++) f[y * SCREEN + x] = e.shade(x, y);
+  FILE *fp = fopen(path.c_str(), "wb");
+  fwrite(f.data(), 2, f.size(), fp);
+  fclose(fp);
+}
+
+static const uint32_t SHOTS[] = { 700, 910, 980, 1060, 1150, 1260, 1400, 1580, 1800, 2100, 2470, 3300, 4100, 4900, 5650, 5990 };
+
+int main(int argc, char **argv) {
+  std::string dir = argc > 1 ? argv[1] : "parity_out";
+  int n = 0;
+  // ---- driven by the website: moods (incl. surprised), look, blinks, colors ----
+  {
+    Engine e; e.begin(7);
+    int k = 0;
+    for (uint32_t t = 0; t <= 6000; t += 10) {
+      e.setWander(false); e.setAutoBlink(false);
+      Mood m = t < 800 ? NEUTRAL : t < 3000 ? WOW : t < 3800 ? HAPPY : t < 4600 ? SIDE : t < 5400 ? SAD : WOW;
+      e.setMood(m);
+      e.setLook((float)(0.5 * sin(t / 600.0)), (float)(0.4 * cos(t / 800.0)));
+      if (t == 2000) e.setColors(0x14213D, 0xFF5FA2);   // navy screen, pink eyes
+      if (t == 2400) e.blinkNow(t, false);
+      if (t == 4200) e.setColors(0xFFFFFF, 0x2A9D8F);   // white screen, teal eyes
+      e.update(t);
+      for (uint32_t s : SHOTS) if (s == t) { dump(e, dir + "/linked_" + std::to_string(k++) + ".bin"); n++; }
+    }
+  }
+  // ---- on its own: random blinks and wandering (same seed) ----
+  {
+    Engine e; e.begin(3);
+    e.setWander(true);
+    int k = 0;
+    for (uint32_t t = 0; t <= 6000; t += 10) {
+      e.update(t);
+      for (uint32_t s : SHOTS) if (s == t) { dump(e, dir + "/solo_" + std::to_string(k++) + ".bin"); n++; }
+    }
+  }
+  printf("wrote %d frames to %s\n", n, dir.c_str());
+  return 0;
+}

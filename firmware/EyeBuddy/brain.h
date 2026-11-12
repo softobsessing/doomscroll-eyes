@@ -2,11 +2,12 @@
 // Pure C++ like eyes.h, so it can be tested on the Mac.
 //
 // Protocol (text lines, '\n'-terminated, same over USB serial and Bluetooth):
-//   laptop -> board   E <neutral|happy|side|sad> <lookX -100..100> <lookY -100..100>
+//   laptop -> board   E <neutral|happy|side|sad|wow> <lookX -100..100> <lookY -100..100>   (wow = surprised)
+//                     K <screen RRGGBB> <eyes RRGGBB>   (colors, e.g. "K 000000 EFC742")
 //                     B | B2                 (blink now / double blink: the web app is the blink clock,
 //                                             so board and website blink at the same moment)
 //                     P                      (ping, board answers HELLO)
-//   board -> laptop   HELLO EyeBuddy 1
+//   board -> laptop   HELLO EyeBuddy 2
 //                     T touch | T release    (finger down / finger up)
 #pragma once
 #include "eyes.h"

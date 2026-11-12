@@ -17,6 +17,12 @@ https://espressif.github.io/esptool-js/ (Chrome). No Arduino needed.
 | `^ ^` happy | you come back to the screen, or you touch it |
 | half-moons (side-eye) | your eyes leave the laptop screen (right away) |
 | droopy lids (disappointed) | still looking away 2 s later |
+| growing ovals (surprised) | the website's **surprised** button: blink, then the eyes grow through four shapes (small wide ovals → wider, pupils glancing in → tall → huge) and stay big |
+
+![surprised](preview/surprised.png)
+
+**Colors:** the website's color wheel sets the eye color and the screen color (`K` line below). The board saves
+the last colors in flash (1.5 s after you stop changing them), so they survive a restart.
 
 Expression changes always happen mid-blink, so the eyes close in one mood and open in the next.
 
@@ -54,10 +60,11 @@ To go back to the Waveshare factory clock: `esp32-tools/venv/bin/esptool.py --ch
 
 ## Protocol (USB serial and Bluetooth Nordic UART, text lines)
 ```
-laptop -> board   E <neutral|happy|side|sad> <lookX -100..100> <lookY -100..100>    (~20 per second)
+laptop -> board   E <neutral|happy|side|sad|wow> <lookX -100..100> <lookY -100..100>    (~20 per second; wow = surprised)
+                  K <screen RRGGBB> <eyes RRGGBB>                                       (colors)
                   B | B2                                                           (blink now / double blink)
                   P                                                                (ping)
-board -> laptop   HELLO EyeBuddy 1
+board -> laptop   HELLO EyeBuddy 2
                   T touch | T release                (finger down / finger up)
                   D fps <n> worst_ms <n>     (USB only, every 10 s, for debugging)
 ```
@@ -80,3 +87,11 @@ and right eye always change at the same time. PSRAM must be enabled (OPI PSRAM).
 
 Mac checks (in the original project folder, not in this repo) `tools/eyebuddy_preview/`: `test_brain` (logic), `test_render` (panel output pixel-exact vs the eye
 engine), `preview stills|anim|bench` (images).
+
+## Website preview check
+The website's preview (`eyes.js`) is a port of `eyes.cpp`. After changing shapes, colors or timings in either, check
+they still match pixel by pixel (from the repo root):
+```
+clang++ -O2 -std=c++17 -o /tmp/parity firmware/EyeBuddy/extras/parity.cpp firmware/EyeBuddy/eyes.cpp
+/tmp/parity /tmp/parity_out && node test/eyes_port.test.mjs /tmp/parity_out
+```

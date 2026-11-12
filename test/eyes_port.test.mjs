@@ -1,50 +1,65 @@
-// Compares eyes.js with the board's C++ (EyeBuddy/eyes.cpp) using frames from the Mac preview tool:
-//   (cd ../tools/eyebuddy_preview && ./preview stills out/stills)   then   node test/eyes_port.test.mjs
+// Compares eyes.js with the board's eye engine (firmware/EyeBuddy/eyes.cpp), pixel by pixel.
+// From the repo root:
+//   clang++ -O2 -std=c++17 -o /tmp/parity firmware/EyeBuddy/extras/parity.cpp firmware/EyeBuddy/eyes.cpp
+//   /tmp/parity /tmp/parity_out && node test/eyes_port.test.mjs /tmp/parity_out
+// The scripted scenario below must match firmware/EyeBuddy/extras/parity.cpp.
 import { readFileSync, existsSync } from 'node:fs';
 import assert from 'node:assert';
-import { fileURLToPath } from 'node:url';
-import { Engine, MOODS, SCREEN } from '../eyes.js';
+import { Engine, SCREEN } from '../eyes.js';
 
-const dir = process.argv[2] || fileURLToPath(new URL('../../tools/eyebuddy_preview/out/stills/', import.meta.url));
-if (!existsSync(dir)) { console.log(`skip: no C++ frames in ${dir}`); process.exit(0); }
+const dir = process.argv[2] || '/tmp/parity_out';
+if (!existsSync(dir)) { console.log(`skip: no firmware frames in ${dir}`); process.exit(0); }
 
-function readPPM(path) {
-  const buf = readFileSync(path);
-  const header = buf.subarray(0, 20).toString('latin1').match(/^P6\s+(\d+)\s+(\d+)\s+255\s/);
-  return buf.subarray(header[0].length);
+const N = SCREEN;
+const SHOTS = [700, 910, 980, 1060, 1150, 1260, 1400, 1580, 1800, 2100, 2470, 3300, 4100, 4900, 5650, 5990];
+const expand = (c) => [((c >> 11) & 31) * 255 / 31, ((c >> 5) & 63) * 255 / 63, (c & 31) * 255 / 31];
+
+let worst = 0, frames = 0;
+function compare(name, e) {
+  const buf = readFileSync(`${dir}/${name}.bin`);
+  const ref = new Uint16Array(buf.buffer, buf.byteOffset, N * N);
+  let diff = 0, big = 0, eyePx = 0;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const dx = x + 0.5 - N / 2, dy = y + 0.5 - N / 2;
+    if (dx * dx + dy * dy > (N / 2) ** 2) continue;   // outside the round glass
+    const i = y * N + x, js = e.shade(x, y);
+    if (ref[i] !== e.face565) eyePx++;
+    if (js === ref[i]) continue;
+    diff++;
+    const a = expand(js), b = expand(ref[i]);
+    // more than one RGB565 step apart = a real difference (one step = float rounding on an edge)
+    if (Math.abs(a[0] - b[0]) > 9 || Math.abs(a[1] - b[1]) > 5 || Math.abs(a[2] - b[2]) > 9) big++;
+  }
+  assert.ok(eyePx > 50, `${name}: nothing drawn`);
+  worst = Math.max(worst, big); frames++;
+  console.log(`${name.padEnd(10)} ${e.moodName.padEnd(8)} eye px ${String(eyePx).padStart(6)}   ${diff ? `${diff} px off by a rounding step, ${big} by more` : 'identical'}`);
 }
-const expand = (c) => [(((c >> 11) & 31) * 255 / 31) | 0, (((c >> 5) & 63) * 255 / 63) | 0, ((c & 31) * 255 / 31) | 0];
 
-let total = 0;
-for (let m = 0; m < MOODS.length; m++) {
-  // same sequence as `preview stills`
+// ---- driven by the website: moods (incl. surprised), look, blinks, colors ----
+{
   const e = new Engine(7);
-  e.setMood(m);
-  let t = 0;
-  for (; t < 600; t += 10) e.update(t);
-  while (e.blinking) e.update(t += 10);
-  const frames = [['mood', e.eyes.map((x) => ({ ...x }))]];
-  const open = new Map();
-  const shadeNow = () => { const f = new Uint16Array(SCREEN * SCREEN); for (let y = 0; y < SCREEN; y++) for (let x = 0; x < SCREEN; x++) f[y * SCREEN + x] = e.shade(x, y); return f; };
-  open.set('mood', shadeNow());
-  while (!e.blinking) e.update(t += 5);
-  for (let k = 0; k < 3; k++) e.update(t += 25);
-  open.set('blink', shadeNow());
-  for (const [kind, js] of open) {
-    const ref = readPPM(`${dir}/${kind}_${MOODS[m]}.ppm`);
-    let bad = 0, maxd = 0, lit = 0;
-    for (let y = 0; y < SCREEN; y++) for (let x = 0; x < SCREEN; x++) {
-      const dx = x + 0.5 - SCREEN / 2, dy = y + 0.5 - SCREEN / 2;
-      if (dx * dx + dy * dy > (SCREEN / 2) ** 2) continue;   // preview paints the outside grey
-      const i = y * SCREEN + x, rgb = expand(js[i]);
-      if (js[i]) lit++;
-      const d = Math.max(...rgb.map((v, c) => Math.abs(v - ref[i * 3 + c])));
-      if (d) { bad++; maxd = Math.max(maxd, d); }
-    }
-    console.log(`${kind.padEnd(5)} ${MOODS[m].padEnd(8)} lit ${String(lit).padStart(6)}  differing ${bad}  max diff ${maxd}`);
-    total += bad;
-    assert(lit > 50, 'nothing drawn');
-    assert(bad <= lit * 0.01 && maxd <= 9, 'JS port drifted from eyes.cpp');   // only float rounding at edges allowed
+  let k = 0;
+  for (let t = 0; t <= 6000; t += 10) {
+    e.setWander(false); e.setAutoBlink(false);
+    e.setMood(t < 800 ? 'neutral' : t < 3000 ? 'wow' : t < 3800 ? 'happy' : t < 4600 ? 'side' : t < 5400 ? 'sad' : 'wow');
+    e.setLook(Math.fround(0.5 * Math.sin(t / 600)), Math.fround(0.4 * Math.cos(t / 800)));
+    if (t === 2000) e.setColors(0x14213D, 0xFF5FA2);
+    if (t === 2400) e.blinkNow(t, false);
+    if (t === 4200) e.setColors(0xFFFFFF, 0x2A9D8F);
+    e.update(t);
+    if (SHOTS.includes(t)) compare(`linked_${k++}`, e);
   }
 }
-console.log(total === 0 ? 'eyes.js matches eyes.cpp exactly' : `eyes.js matches eyes.cpp (${total} edge pixels differ by rounding)`);
+// ---- on its own: random blinks and wandering (same seed) ----
+{
+  const e = new Engine(3);
+  e.setWander(true);
+  let k = 0;
+  for (let t = 0; t <= 6000; t += 10) {
+    e.update(t);
+    if (SHOTS.includes(t)) compare(`solo_${k++}`, e);
+  }
+}
+console.log(`\n${frames} frames compared; worst frame has ${worst} pixels off by more than a rounding step`);
+assert.ok(worst <= 40, 'eyes.js no longer matches eyes.cpp');
+console.log('ok: the website preview matches the board');

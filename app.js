@@ -5,6 +5,7 @@ import {
 } from './attention.js';
 import { SerialLink, BleLink } from './link.js';
 import { Engine as EyeEngine, Mirror, ScreenPreview } from './eyes.js';
+import { ColorPicker, DEFAULT_COLORS, hex6 } from './colors.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -17,7 +18,10 @@ const el = {
 };
 
 // ------------------------------------------------------------------ settings (localStorage)
-const LS = { settings: 'eyebuddy.settings', baseline: 'eyebuddy.baseline', caught: 'eyebuddy.caught' };
+const LS = {
+  settings: 'eyebuddy.settings', baseline: 'eyebuddy.baseline', caught: 'eyebuddy.caught',
+  colors: 'eyebuddy.colors', savedColors: 'eyebuddy.savedColors',
+};
 const DEFAULT_LOOK = { gain: 1.0, tauMs: 150 };
 const SEND_HZ = 20;
 const CAL_SECONDS = 3;
@@ -78,6 +82,7 @@ for (const l of [usb, ble]) {
     if (s.state !== 'connected' && link === l) { boardHello = ''; if (s.state === 'disconnected') link = null; }
     renderConnButtons();
     if (s.state === 'connected') {   // hello blink: the board blinks on its first E line, the preview right now
+      sendColors();                  // the website is in charge of the colors
       sendNow();
       eyeEngine.blinkNow(Math.floor(performance.now()), false);
     }
@@ -176,6 +181,24 @@ function sendNow() {
 const eyeEngine = new EyeEngine((Math.random() * 2 ** 32) >>> 0);
 const mirror = new Mirror(eyeEngine);
 const screenPreview = new ScreenPreview($('screen'));
+
+// ------------------------------------------------------------------ colors (screen + eyes)
+let colors = loadJSON(LS.colors, DEFAULT_COLORS);
+eyeEngine.setColors(colors.face, colors.eye);
+function sendColors() {
+  if (link?.connected) link.send(`K ${hex6(colors.face)} ${hex6(colors.eye)}`);
+}
+new ColorPicker({
+  colors,
+  saved: loadJSON(LS.savedColors, []),
+  onChange: (c) => {   // live while dragging: preview now, board right away
+    colors = c;
+    eyeEngine.setColors(c.face, c.eye);
+    sendColors();
+    saveJSON(LS.colors, c);
+  },
+  onSavedChange: (saved) => saveJSON(LS.savedColors, saved),
+});
 function stepEyes() {
   const now = Math.floor(performance.now());
   const [mood, x, y] = currentFrame();

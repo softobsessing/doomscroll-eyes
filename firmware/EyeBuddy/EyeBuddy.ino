@@ -8,6 +8,7 @@
 // Flash Size: 16MB, PSRAM: OPI PSRAM, Partition Scheme: 16M Flash (3MB APP/9.9MB FATFS).
 // No extra libraries needed.
 #include <Arduino.h>
+#include <Preferences.h>
 #include "ble_link.h"
 #include "brain.h"
 #include "config.h"
@@ -20,6 +21,33 @@ using namespace eyes;
 
 static Engine engine;
 static Brain brain;
+
+// ---------- colors: set from the website, remembered across restarts ----------
+static Preferences prefs;
+static uint32_t seenFace, seenEye, colorChangedAt = 0;
+static bool colorsDirty = false;
+
+static void loadColors() {
+  prefs.begin("eyebuddy", false);
+  engine.setColors(prefs.getUInt("face", DEFAULT_FACE_COLOR), prefs.getUInt("eye", DEFAULT_EYE_COLOR));
+  seenFace = engine.faceColor();
+  seenEye = engine.eyeColor();
+}
+
+// Save 1.5 s after the last change, so dragging the color wheel doesn't wear out the flash.
+static void saveColorsWhenSettled(uint32_t now) {
+  if (engine.faceColor() != seenFace || engine.eyeColor() != seenEye) {
+    seenFace = engine.faceColor();
+    seenEye = engine.eyeColor();
+    colorChangedAt = now;
+    colorsDirty = true;
+  }
+  if (colorsDirty && now - colorChangedAt > 1500) {
+    prefs.putUInt("face", seenFace);
+    prefs.putUInt("eye", seenEye);
+    colorsDirty = false;
+  }
+}
 
 // ---------- talking to the web app ----------
 static void emit(const char* line) {
@@ -75,8 +103,9 @@ void setup() {
   touch_begin();
   ble_begin(BLE_NAME);
   engine.begin(esp_random());
+  loadColors();
   brain.begin(&engine, emit);
-  emit("HELLO EyeBuddy 1");
+  emit("HELLO EyeBuddy 2");
 }
 
 void loop() {
@@ -87,6 +116,7 @@ void loop() {
   brain.update(start);
   engine.update(start);
   render_frame(engine);
+  saveColorsWhenSettled(start);
   uint32_t spent = millis() - start;
 
   // every 10 s, over USB only: "D fps <frames/s> worst_ms <slowest frame>" (the web app ignores D lines)

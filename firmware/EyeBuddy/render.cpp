@@ -95,6 +95,19 @@ static bool overlaps(const Box& a, const Box& b) {
 }
 
 void render_frame(const Engine& engine) {
+  // the screen color changed (or first frame): redraw everything
+  static uint32_t drawnFace = 0;
+  if (engine.faceVersion() != drawnFace) {
+    drawnFace = engine.faceVersion();
+    for (int i = 0; i < 2; i++) {
+      const Eye& e = engine.eye(i);
+      prevBox[i] = {e.x0, e.y0, e.x1, e.y1, true};
+    }
+    Box all = {0, 0, N - 1, N - 1, true};
+    shadeRect(&engine, all);
+    pushRect(all);
+    return;
+  }
   Box region[2];
   for (int i = 0; i < 2; i++) {
     const Eye& e = engine.eye(i);
