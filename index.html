@@ -20,9 +20,11 @@
       <span id="pill" class="pill" data-state="disconnected">not connected</span>
       <button id="btnUsb" type="button" class="primary">Connect USB</button>
       <button id="btnBle" type="button">Connect Bluetooth</button>
+      <button id="btnBleAny" type="button" class="link-btn" title="Pick a different EyeBuddy over Bluetooth" hidden>Other board…</button>
       <button id="btnUsbAny" type="button" class="link-btn" title="Pick any serial port (no Espressif filter)">Other port…</button>
     </div>
   </header>
+  <div id="linkMsg" class="link-msg" role="status" hidden></div>
 
   <main>
     <div id="demo" class="demo" hidden>
@@ -126,6 +128,19 @@
       </div>
     </section>
 
+    <section class="card boards" aria-label="My boards">
+      <h2>My boards</h2>
+      <ul id="boardList" class="board-list"></ul>
+      <p class="fine">Your board only listens to computers it has paired with. The first time, plug it in with USB
+        (pairs instantly) or connect over Bluetooth and touch the board when it says <b>TAP TO PAIR</b>. Each board shows its
+        ID on its screen for a few seconds after power-on. To give a board away, hold it for 10 seconds: it forgets every computer.</p>
+      <div class="fw">
+        <div><span class="field-label">Firmware</span> <span id="fwInfo" class="fine"></span></div>
+        <button id="btnFw" type="button">Update firmware (USB)</button>
+        <span id="fwMsg" class="fine" role="status"></span>
+      </div>
+    </section>
+
     <details class="card tuning" id="tuning">
       <summary>Advanced tuning</summary>
       <div class="tuning-grid">
@@ -153,6 +168,17 @@
   </main>
 
   <div id="toast" class="toast" hidden></div>
+
+  <dialog id="qrDialog" class="qr-dialog">
+    <form method="dialog">
+      <h3 id="qrTitle">Setup link</h3>
+      <div id="qrBox" class="qr-box"></div>
+      <p class="fine">Opening this link sets up this board in the browser (handy as a sticker or in the box).
+        It is not a password: the board still has to be paired by touch or USB.</p>
+      <input id="qrLink" readonly>
+      <div class="qr-btns"><button type="button" id="btnQrCopy">Copy link</button><button value="close">Close</button></div>
+    </form>
+  </dialog>
 
   <script type="module" src="app.js"></script>
 </body>

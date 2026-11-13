@@ -6,6 +6,8 @@ import {
 import { SerialLink, BleLink } from './link.js';
 import { Engine as EyeEngine, Mirror, ScreenPreview, DIZZY_TOTAL_MS } from './eyes.js';
 import { ColorPicker, DEFAULT_COLORS, hex6 } from './colors.js';
+import { BoardStore, bleName, idFromName, isBoardId } from './boards.js';
+import { Session } from './session.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -13,7 +15,9 @@ const el = {
   visionStatus: $('visionStatus'), cls: $('cls'), reasons: $('reasons'), mood: $('mood'),
   moodWord: $('moodWord'), caught: $('caught'), btnCal: $('btnCal'), btnPause: $('btnPause'),
   calMsg: $('calMsg'), demo: $('demo'), demoMsg: $('demoMsg'), pill: $('pill'),
-  btnUsb: $('btnUsb'), btnUsbAny: $('btnUsbAny'), btnBle: $('btnBle'), toast: $('toast'),
+  btnUsb: $('btnUsb'), btnUsbAny: $('btnUsbAny'), btnBle: $('btnBle'), btnBleAny: $('btnBleAny'), toast: $('toast'),
+  linkMsg: $('linkMsg'), boardList: $('boardList'), fwInfo: $('fwInfo'), btnFw: $('btnFw'), fwMsg: $('fwMsg'),
+  qrDialog: $('qrDialog'), qrBox: $('qrBox'), qrLink: $('qrLink'), qrTitle: $('qrTitle'), btnQrCopy: $('btnQrCopy'),
   sigBody: $('sigBody'), baselineInfo: $('baselineInfo'), btnDefaults: $('btnDefaults'), tuning: $('tuning'),
 };
 
@@ -72,32 +76,86 @@ function renderCaught() { el.caught.textContent = caughtToday(); }
 setInterval(renderCaught, 30_000); // rolls over to 0 at local midnight
 
 // ------------------------------------------------------------------ board link
+// Each board has its own ID (EyeBuddy-3F2A). This browser remembers the boards it paired with and
+// proves it on every connection (session.js); strangers' laptops can't drive your board.
+const store = new BoardStore();
 const usb = new SerialLink();
 const ble = new BleLink();
-let link = null; // the active Link
-let boardHello = '';
+let link = null;      // the active Link
+let session = null;   // handshake on the active link
+let wasReady = false;
+let latestFw = 0;     // firmware version this site ships (fw/manifest.json)
+
+// Setup link: ?board=3F2A (from the QR code) picks that board.
+const wanted = new URLSearchParams(location.search).get('board')?.toUpperCase();
+if (isBoardId(wanted)) {
+  store.upsert(wanted);
+  store.setActive(wanted);
+}
+
+const driving = () => !!(link?.connected && session?.canDrive());
 
 for (const l of [usb, ble]) {
   l.onStatus((s) => {
-    if (s.state === 'connected') link = l;
-    if (link === l || !link) renderPill(s);
-    if (s.state !== 'connected' && link === l) { boardHello = ''; if (s.state === 'disconnected') link = null; }
-    renderConnButtons();
-    if (s.state === 'connected') {   // hello blink: the board blinks on its first E line, the preview right now
-      sendColors();                  // the website is in charge of the colors
-      syncPomodoro();                // a running pomodoro carries on on the board
-      sendNow();
-      eyeEngine.blinkNow(Math.floor(performance.now()), false);
+    if (s.state === 'connected') {
+      link = l;
+      wasReady = false;
+      session = new Session({
+        store, kind: l.kind, send: (line) => l.send(line), onChange: onSession,
+        expectId: l.kind === 'ble' ? idFromName(ble.deviceName) : null,
+      });
     }
+    if (s.state !== 'connected' && link === l) {
+      if (s.state === 'disconnected') link = null;
+      if (session && session.state !== 'failed') { session = null; showLinkMsg(''); }
+      wasReady = false;
+    }
+    if (link === l || !link) renderPill(s);
+    renderConnButtons();
+    renderBoards();
   });
   l.onLine(handleBoardLine);
 }
 
+function onSession(s) {
+  if (s !== session) return;
+  const name = s.board?.id ? store.label(s.board.id) : 'EyeBuddy';
+  const msg = {
+    pairing: `Touch ${name} to pair it with this computer (it says TAP TO PAIR).`,
+    busy: `${name} is being controlled by another computer right now. It'll be yours as soon as that one stops.`,
+    failed: {
+      timeout: 'Pairing timed out: nobody touched the board. Click Connect to try again.',
+      refused: 'The board refused this computer. Hold the board 10 s to reset it, then connect again.',
+      'wrong-board': 'That is not the board you picked. Try again.',
+    }[s.reason] || 'Could not connect to the board.',
+  }[s.state] || (s.state === 'ready' && s.legacy
+    ? 'This board has old firmware: anyone nearby could control it. Update it (My boards → Update firmware).' : '');
+  showLinkMsg(msg, s.state === 'failed' || s.state === 'busy' || (s.state === 'ready' && s.legacy) ? 'warn' : 'info');
+  if (s.state === 'ready' && !wasReady) {   // in: hello blink (the board blinks on its first E line)
+    wasReady = true;
+    sendNow();                     // first E: the board takes us as its controller
+    sendColors();                  // the website is in charge of the colors
+    syncPomodoro();                // a running pomodoro carries on on the board
+    eyeEngine.blinkNow(Math.floor(performance.now()), false);
+  }
+  if (s.state === 'failed') link?.disconnect();
+  if (link) renderPill({ state: link.state, kind: link.kind });
+  renderBoards();
+}
+
+function showLinkMsg(text, kind = 'info') {
+  el.linkMsg.hidden = !text;
+  el.linkMsg.textContent = text;
+  el.linkMsg.dataset.kind = kind;
+}
+
 function renderPill(s) {
-  el.pill.dataset.state = s.state;
+  el.pill.dataset.state = s.state === 'connected' && session && !session.canDrive() ? 'connecting' : s.state;
   const kind = s.kind === 'usb' ? 'USB' : 'Bluetooth';
+  const who = session?.board?.id ? store.label(session.board.id) : session?.legacy ? 'EyeBuddy (old firmware)' : 'EyeBuddy';
+  const step = { hello: 'saying hello…', auth: 'checking it is yours…', pairing: 'waiting for a touch…', busy: 'busy', failed: 'refused' };
   const txt = {
-    connected: `${kind} connected${boardHello ? ' · ' + boardHello : ''}`,
+    connected: session && step[session.state] ? `${kind} · ${who} · ${step[session.state]}` : `${kind} · ${who}`,
     connecting: `${kind}: connecting…`,
     reconnecting: s.detail || `${kind}: reconnecting…`,
     error: s.detail || `${kind} error`,
@@ -109,10 +167,14 @@ function renderPill(s) {
 
 function renderConnButtons() {
   el.btnUsb.textContent = usb.connected ? 'Disconnect USB' : 'Connect USB';
-  el.btnBle.textContent = ble.connected || ble.state === 'reconnecting' ? 'Disconnect Bluetooth' : 'Connect Bluetooth';
+  const mine = store.active;
+  el.btnBle.textContent = ble.connected || ble.state === 'reconnecting' ? 'Disconnect Bluetooth'
+    : mine ? `Connect ${bleName(mine)}` : 'Connect Bluetooth';
+  el.btnBle.title = mine ? `Bluetooth, only ${store.label(mine)}` : 'Bluetooth: pick your EyeBuddy';
   el.btnUsb.disabled = !SerialLink.supported();
   el.btnUsbAny.disabled = !SerialLink.supported() || usb.connected;
-  el.btnBle.disabled = !BleLink.supported();
+  el.btnBle.disabled = el.btnBleAny.disabled = !BleLink.supported();
+  el.btnBleAny.hidden = !mine;
 }
 
 async function connectWith(l, opts) {
@@ -123,7 +185,8 @@ async function connectWith(l, opts) {
   } catch (e) {
     if (e?.name === 'NotFoundError') {
       // user cancelled the chooser or nothing matched
-      renderPill({ state: 'disconnected', kind: l.kind, detail: l === usb ? 'no EyeBuddy picked — try "Other port…"' : 'no EyeBuddy picked' });
+      const detail = l === usb ? 'no EyeBuddy picked — try "Other port…"' : opts?.id ? `${bleName(opts.id)} not picked/found — is it on and nearby?` : 'no EyeBuddy picked';
+      renderPill({ state: 'disconnected', kind: l.kind, detail });
     } else {
       renderPill({ state: 'error', kind: l.kind, detail: e?.message || String(e) });
     }
@@ -133,27 +196,124 @@ async function connectWith(l, opts) {
 
 el.btnUsb.onclick = () => (usb.connected ? usb.disconnect() : connectWith(usb));
 el.btnUsbAny.onclick = () => connectWith(usb, { anyPort: true });
-el.btnBle.onclick = () => (ble.connected || ble.state === 'reconnecting' ? ble.disconnect() : connectWith(ble));
+el.btnBle.onclick = () => (ble.connected || ble.state === 'reconnecting' ? ble.disconnect() : connectWith(ble, { id: store.active }));
+el.btnBleAny.onclick = () => connectWith(ble, {});
 
 const TOUCH_TOASTS = {
   touch: 'EyeBuddy is happy to see you',
   release: 'EyeBuddy liked that',
+  reset: 'EyeBuddy forgot every paired computer (10 s hold)',
 };
 
 function handleBoardLine(line) {
   const parts = line.trim().split(/\s+/);
-  if (parts[0] === 'HELLO') {
-    boardHello = `${parts[1] || 'board'} v${parts[2] || '?'}`; // "HELLO EyeBuddy 1" -> "EyeBuddy v1"
-    if (link) renderPill({ state: link.state, kind: link.kind });
+  if (parts[0] === 'HELLO' || parts[0] === 'AUTH' || parts[0] === 'BUSY') {
+    session?.onLine(line);
   } else if (parts[0] === 'T' && parts[1]) {
     mirror.touch(parts[1], performance.now());   // board was touched: preview reacts the same way
     toast(TOUCH_TOASTS[parts[1]] || `touch: ${parts[1]}`);
-  } else if (parts[0] === 'P') {
-    // ping reply; nothing to show
   } else {
     console.debug('[board]', line);
   }
 }
+
+// ------------------------------------------------------------------ my boards
+function ago(t) {
+  if (!t) return 'never connected';
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? 'seen just now' : m < 60 ? `seen ${m} min ago` : m < 1440 ? `seen ${Math.round(m / 60)} h ago` : `seen ${Math.round(m / 1440)} d ago`;
+}
+
+function renderBoards() {
+  const list = store.list();
+  const live = link?.connected && session?.board?.id;
+  el.boardList.replaceChildren(...(list.length ? list.map((b) => {
+    const li = document.createElement('li');
+    li.dataset.active = String(b.id === store.active);
+    const on = live === b.id;
+    const title = document.createElement('div');
+    title.className = 'b-title';
+    title.textContent = b.name || bleName(b.id);
+    const meta = document.createElement('div');
+    meta.className = 'fine';
+    meta.textContent = [b.name ? bleName(b.id) : '', on ? 'connected' : ago(b.lastSeen),
+      b.paired ? 'paired' : 'not paired yet', b.fw ? `firmware v${b.fw}` : ''].filter(Boolean).join(' · ');
+    const btns = document.createElement('div');
+    btns.className = 'b-btns';
+    const mk = (label, fn, cls = 'small-btn') => { const x = document.createElement('button'); x.type = 'button'; x.className = cls; x.textContent = label; x.onclick = fn; return x; };
+    if (b.id !== store.active) btns.append(mk('Use this one', () => { store.setActive(b.id); renderBoards(); renderConnButtons(); }));
+    btns.append(
+      mk('Rename', () => { const n = prompt(`Name for ${bleName(b.id)}`, b.name || ''); if (n !== null) { store.rename(b.id, n.trim()); renderBoards(); renderConnButtons(); } }),
+      mk('Setup link', () => showSetupLink(b.id)),
+      mk('Forget', () => {
+        if (!confirm(`Forget ${store.label(b.id)} on this computer?\n\nThe board itself still trusts this computer until you hold it for 10 seconds.`)) return;
+        if (on) link.disconnect();
+        store.forget(b.id); renderBoards(); renderConnButtons();
+      }),
+    );
+    li.append(title, meta, btns);
+    return li;
+  }) : [Object.assign(document.createElement('li'), { className: 'fine', textContent: 'No boards yet. Connect one with USB or Bluetooth: it shows up here.' })]));
+  renderFw();
+}
+
+function renderFw() {
+  const b = session?.board;
+  const bits = [];
+  if (link?.connected && b) {
+    if (session.legacy) bits.push('This board runs old firmware (v5 or earlier) without the pairing lock.');
+    else bits.push(`This board: firmware v${b.fw}${latestFw && b.fw >= latestFw ? ' (up to date)' : ''}.`);
+  }
+  if (latestFw) bits.push(`Latest: v${latestFw}.`);
+  el.fwInfo.textContent = bits.join(' ');
+  const outdated = link?.connected && b && (session.legacy || (latestFw && b.fw < latestFw));
+  el.btnFw.classList.toggle('primary', !!outdated);
+  el.btnFw.disabled = !SerialLink.supported() || !latestFw || fwBusy;
+}
+
+async function showSetupLink(id) {
+  const url = `${location.origin}${location.pathname}?board=${id}`;
+  el.qrTitle.textContent = `Setup link for ${store.label(id)}`;
+  el.qrLink.value = url;
+  try {
+    const { default: qrcode } = await import('./vendor/qrcode/qrcode.mjs');
+    const qr = qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+    el.qrBox.innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+  } catch (e) { el.qrBox.textContent = `QR code unavailable: ${e?.message || e}`; }
+  el.qrDialog.showModal();
+}
+el.btnQrCopy.onclick = async () => {
+  try { await navigator.clipboard.writeText(el.qrLink.value); toast('link copied'); } catch { el.qrLink.select(); }
+};
+
+// ------------------------------------------------------------------ firmware update (USB)
+let fwBusy = false;
+fetch('fw/manifest.json', { cache: 'no-cache' }).then((r) => r.json()).then((m) => { latestFw = m.version || 0; renderFw(); }).catch(() => {});
+
+el.btnFw.onclick = async () => {
+  if (fwBusy) return;
+  const say = (t) => { el.fwMsg.textContent = t; };
+  fwBusy = true; renderFw();
+  try {
+    const { loadManifest, flashLatest } = await import('./flasher.js');
+    const manifest = await loadManifest();
+    say('Plug EyeBuddy in with a USB cable, then pick it in the list.');
+    const port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x303a }] });
+    if (usb.connected) await usb.disconnect();   // the updater needs the port to itself
+    await flashLatest({ port, manifest, onProgress: (f, what) => say(`${what}… ${Math.round(f * 100)}%`), onLog: (l) => console.debug('[esptool]', l) });
+    say(`Updated to firmware v${manifest.version}. Your pairings are kept. Reconnecting…`);
+    usb._userClosed = false;   // let the "plugged back in" handler reopen it
+    setTimeout(() => { if (!usb.connected) renderBoards();
+// Reopen what this site was allowed to use before: USB first, else your Bluetooth board (if Chrome allows it).
+usb.autoReconnect().then((ok) => ok || ble.autoReconnect(store.active)).catch(() => {}); }, 3000);
+  } catch (e) {
+    say(e?.name === 'NotFoundError' ? 'No board picked.' : `Update failed: ${e?.message || e}. Unplug/replug and try again, or flash manually (see README).`);
+  } finally {
+    fwBusy = false; renderFw();
+  }
+};
 
 let toastTimer = 0;
 function toast(msg) {
@@ -175,7 +335,7 @@ function currentFrame() {
 // The preview engine is the clock: its small glances ride along in the E line, and its blinks are
 // sent as B / B2, so the board's eyes do exactly what the preview does.
 function sendNow() {
-  if (!link?.connected) return;
+  if (!driving()) return;
   const [mood, x, y] = currentFrame();
   link.send(eLine(mood, x + eyeEngine.jitterX * 100, y + eyeEngine.jitterY * 100));
 }
@@ -190,7 +350,7 @@ const screenPreview = new ScreenPreview($('screen'));
 let colors = loadJSON(LS.colors, DEFAULT_COLORS);
 eyeEngine.setColors(colors.face, colors.eye);
 function sendColors() {
-  if (link?.connected) link.send(`K ${hex6(colors.face)} ${hex6(colors.eye)}`);
+  if (driving()) link.send(`K ${hex6(colors.face)} ${hex6(colors.eye)}`);
 }
 // the stage behind the preview glows in the eye color
 const showEyeColor = (c) => document.documentElement.style.setProperty('--eye', `#${hex6(c.eye)}`);
@@ -214,12 +374,12 @@ function stepEyes() {
   const jx = eyeEngine.jitterX, jy = eyeEngine.jitterY;
   eyeEngine.update(now);
   const blink = eyeEngine.takeBlinkEvent();
-  if (blink && link?.connected) link.send(blink.twice ? 'B2' : 'B');   // board blinks right now, with the preview
+  if (blink && driving()) link.send(blink.twice ? 'B2' : 'B');   // board blinks right now, with the preview
   if (jx !== eyeEngine.jitterX || jy !== eyeEngine.jitterY) sendNow();  // new glance: tell the board straight away
 }
 function blinkWithUser() {
   stepEyes();
-  if (eyeEngine.blinkNow(Math.floor(performance.now()), false) && link?.connected) link.send('B');
+  if (eyeEngine.blinkNow(Math.floor(performance.now()), false) && driving()) link.send('B');
 }
 // Mood changed: step the preview first so it starts its switch-blink at the same instant the board
 // gets the E line (otherwise the board would lead by up to one screen refresh).
@@ -456,7 +616,7 @@ function syncPomodoro() {
   const now = Math.floor(performance.now());
   if (!pomo) { eyeEngine.setPomodoro(now, 0, 0); return; }
   eyeEngine.setPomodoro(now, pomoLeft(), pomo.total);
-  if (link?.connected) link.send(`M ${pomoLeft()} ${pomo.total}`);
+  if (driving()) link.send(`M ${pomoLeft()} ${pomo.total}`);
   pomoSyncAt = now + 60_000;   // re-sync every minute
 }
 function startPomodoro() {
@@ -473,7 +633,7 @@ function stopPomodoro() {
   saveJSON(LS.pomodoro, null);
   pomoFlashAt = 0;
   syncPomodoro();
-  if (link?.connected) link.send('M 0 0');
+  if (driving()) link.send('M 0 0');
   setExpression('auto');
   renderPomodoro(true);
 }
@@ -482,7 +642,7 @@ function pomodoroTick() {
   if (pomoFlashAt && now >= pomoFlashAt) {                 // 2. the timer screen for 2 s...
     pomoFlashAt = 0;
     eyeEngine.flashTimer(now, POMO_TIMER_MS);
-    if (link?.connected) link.send('S');
+    if (driving()) link.send('S');
     setExpression('neutral');                              // 3. ...then focused (switches out of sight)
   }
   if (pomo && Date.now() >= pomo.end) {                    // time's up: 00:00 on the board, then surprised
@@ -705,5 +865,7 @@ scheduleRender();
 if (!window.isSecureContext) {
   el.camMsg.textContent = 'Open via http://localhost:8000 (camera needs a secure context).';
 }
-usb.autoReconnect().catch(() => {});
+renderBoards();
+// Reopen what this site was allowed to use before: USB first, else your Bluetooth board (if Chrome allows it).
+usb.autoReconnect().then((ok) => ok || ble.autoReconnect(store.active)).catch(() => {});
 startTracking();

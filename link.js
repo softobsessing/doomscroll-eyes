@@ -15,8 +15,9 @@ export const ESPRESSIF_VID = 0x303a;
 export const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 export const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // laptop -> board (write)
 export const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // board -> laptop (notify)
-export const BLE_NAME = 'EyeBuddy';
+import { BLE_PREFIX, bleName } from './boards.js';
 const SERIAL_BAUD = 115200;
+const BLE_CHUNK = 20;   // fits the smallest BLE packet; the board reassembles lines
 
 const encoder = new TextEncoder();
 
@@ -222,18 +223,37 @@ export class BleLink extends Link {
 
   static supported() { return 'bluetooth' in navigator; }
 
-  async connect() {
+  /** Chooser filtered to one board ("EyeBuddy-3F2A") when id is given, else any EyeBuddy (old ones too). */
+  async connect({ id = null } = {}) {
     if (!BleLink.supported()) throw new Error('Web Bluetooth not available (use desktop Chrome)');
     const device = await navigator.bluetooth.requestDevice({
-      filters: [{ name: BLE_NAME }],
+      filters: id ? [{ name: bleName(id) }] : [{ namePrefix: BLE_PREFIX }],
       optionalServices: [NUS_SERVICE],
     });
+    await this._use(device);
+  }
+
+  /** On page load: reconnect to a board this site was allowed to use before, without the chooser.
+   *  Needs Chrome's Bluetooth getDevices() (not in every Chrome); quietly does nothing otherwise. */
+  async autoReconnect(id) {
+    if (!BleLink.supported() || !navigator.bluetooth.getDevices || !id) return false;
+    const device = (await navigator.bluetooth.getDevices()).find((d) => d.name === bleName(id));
+    if (!device) return false;
+    try {
+      await Promise.race([this._use(device), new Promise((_, rej) => setTimeout(() => rej(new Error('not in range')), 8000))]);
+      return true;
+    } catch { this._userClosed = true; this._setStatus('disconnected', ''); return false; }
+  }
+
+  get deviceName() { return this.device?.name || ''; }
+
+  async _use(device) {
     if (this.device && this.device !== device) await this.disconnect();
     this._userClosed = false;
     this.device = device;
     device.removeEventListener('gattserverdisconnected', this._onGattDisconnected);
     device.addEventListener('gattserverdisconnected', this._onGattDisconnected);
-    this._setStatus('connecting', `pairing with ${device.name || BLE_NAME}`);
+    this._setStatus('connecting', `connecting to ${device.name || BLE_PREFIX}`);
     try {
       await this._attach();
     } catch (e) {
@@ -253,16 +273,20 @@ export class BleLink extends Link {
     this._tx.addEventListener('characteristicvaluechanged', this._onNotify);
     await this._tx.startNotifications();
     this._lines.buf = '';
-    this._setStatus('connected', `Bluetooth ${this.device.name || BLE_NAME}`);
+    this._setStatus('connected', `Bluetooth ${this.device.name || BLE_PREFIX}`);
     this.send('P');
   }
 
-  _write(line) {
-    // Lines are <= 20 bytes (fits the default ATT MTU); exactly one line per write.
+  async _write(line) {
+    // Long lines (A / PAIR) go out in 20-byte pieces; the board's line reader joins them.
     const data = encoder.encode(line);
     const rx = this._rx;
-    if (rx.properties.writeWithoutResponse && rx.writeValueWithoutResponse) return rx.writeValueWithoutResponse(data);
-    return rx.writeValue(data);
+    const noResp = rx.properties.writeWithoutResponse && rx.writeValueWithoutResponse;
+    for (let i = 0; i < data.length; i += BLE_CHUNK) {
+      const piece = data.subarray(i, i + BLE_CHUNK);
+      if (noResp) await rx.writeValueWithoutResponse(piece);
+      else await rx.writeValue(piece);
+    }
   }
 
   async _handleDrop() {

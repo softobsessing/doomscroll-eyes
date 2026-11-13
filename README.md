@@ -32,24 +32,65 @@ If the camera is denied or missing, a demo panel with 4 mood buttons appears ins
   **Other port…** (no filter). 115200 baud. A port you granted before is reopened automatically on
   page load and when it's plugged back in. Close the Arduino serial monitor first, since only one
   program can hold the port at a time.
-* **Connect Bluetooth**: pick `EyeBuddy` (Nordic UART service). If the link drops, it retries
-  5 times (0.5/1/2/4/8 s backoff), then gives up and waits for you to click again.
+* **Connect EyeBuddy-3F2A** (Bluetooth): once you have a board, the button connects to *that* board only
+  (Chrome's chooser is filtered to its name). **Other board…** shows every EyeBuddy nearby. If the link drops,
+  it retries 5 times (0.5/1/2/4/8 s backoff), then waits for you to click again.
 
-Only one link is active at a time. The pill shows the state and `EyeBuddy v1` once the board's
-`HELLO` arrives (the app sends `P` right after connecting). Touch events from the board show up
-as a toast ("you booped it").
+Only one link is active at a time. The pill shows which board and what the handshake is doing. Touch events from
+the board show up as a toast.
 
-### Protocol (ASCII lines, `\n` terminated, same on USB and BLE)
+## One board per computer (pairing)
+
+Every board has its own ID, the last 4 hex digits of its chip's MAC address. The board shows it on screen for 5 s after
+power-on (`ID 3F2A`), and its Bluetooth name is `EyeBuddy-3F2A`. The same firmware file works for every board.
+
+* **Your board only obeys computers it has paired with.** Pair by plugging it in with USB once (instant), or by
+  connecting over Bluetooth and touching the board when it shows **TAP TO PAIR** (30 s). Until then a Bluetooth
+  computer can't move the eyes (`AUTH need`).
+* **How it proves it:** this browser keeps a random 16-byte key per board (localStorage, `eyebuddy.boards`); the
+  board keeps up to 8 keys in flash. On every connection the board sends a one-time nonce and the page answers with
+  HMAC-SHA256(key, nonce), so the key never travels over the air again after pairing, and a recorded answer can't be
+  replayed.
+* **One controller at a time:** while one computer drives the eyes, others get `BUSY` (the page says so) until it
+  stops for 3 s. The board also accepts only one Bluetooth connection and stops advertising while connected.
+* **Giving a board away / starting over:** hold the board for 10 s (it counts down `RESET IN 5…1`). It forgets every
+  computer. **Forget** in My boards only forgets the board in this browser.
+* **My boards** lists your boards (rename, forget, pick which one the Bluetooth button uses).
+  **Setup link** shows a link + QR code like `…/doomscroll-eyes/?board=3F2A` that opens the site set up for that
+  board (good for a sticker or the box). It is not a password: pairing still needs USB or a touch.
+* Old boards (firmware v5 and earlier) still connect, without the lock; the page suggests updating.
+
+Security notes: USB is trusted because anyone who can plug in can also reflash the board. The weakest moment is
+Bluetooth pairing itself (the key is sent once, unencrypted); pairing over USB avoids that. Bluetooth isn't
+encrypted, so someone with a radio sniffer could still *watch* the expressions, but not control the board.
+
+## Update the firmware from the page
+
+**My boards → Update firmware (USB)**: plug the board in, pick it, done (about 30 s). It flashes the firmware this
+site ships (`fw/`, with `manifest.json` checksums) using esptool-js (vendored, `vendor/esptool-js/`). It writes the
+bootloader, partition table, boot_app0 and app separately and leaves the NVS area alone, so **pairings survive the
+update**. (Flashing the single `EyeBuddy-firmware.bin` at 0x0 by hand erases them.) The flash is verified with MD5
+afterwards. To publish a new firmware: bump `FW_VERSION` in `config.h`, compile, then run
+`python3 firmware/make_web_fw.py`, which refreshes `fw/` and the manual `.bin`.
+
+### Protocol v4 (ASCII lines, `\n` terminated, same on USB and BLE)
 | direction | line | notes |
 |---|---|---|
-| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz while connected + immediately on mood change. mood ∈ `neutral happy side sad wow chill angry dizzy` (`neutral` = focused, `wow` = surprised, `chill` = chilling) |
+| laptop → board | `P` | hello? The page sends it right after connecting |
+| board → laptop | `HELLO EyeBuddy 4 <id> <fw> <nonce>` | on boot (USB) and in reply to `P`; fresh 16-hex nonce each time. Protocol 3 (`HELLO EyeBuddy 3`, firmware v5) had no pairing; 1 = v4 and older |
+| laptop → board | `A <hmac>` | 32 hex: first 16 bytes of HMAC-SHA256(key, nonce). One try per nonce |
+| laptop → board | `PAIR <key>` | 32 hex. USB: saved at once. Bluetooth: board shows TAP TO PAIR |
+| board → laptop | `AUTH ok` / `no` / `wait` / `timeout` / `need` | `need` = a control line (E/B/K/M/S) sent before `AUTH ok` |
+| board → laptop | `BUSY` | another link is driving the eyes |
+| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz once authorised + immediately on mood change. mood ∈ `neutral happy side sad wow chill angry dizzy` (`neutral` = focused, `wow` = surprised, `chill` = chilling) |
 | laptop → board | `K <screen> <eyes>` | colors as `RRGGBB`, e.g. `K 000000 EFC742`; sent on connect and live while you drag the color wheel. The board saves them |
 | laptop → board | `B` / `B2` | blink now / double blink (the preview is the blink clock) |
 | laptop → board | `M <left> <total>` | pomodoro: seconds left / session length; sent at start, on connect and every minute. `M 0 0` = stop |
 | laptop → board | `S` | show the pomodoro time left for 2 s |
-| laptop → board | `P` | ping |
-| board → laptop | `HELLO EyeBuddy 3` | on boot and in reply to `P` (v3 = tall-oval focused eyes + chilling, surprised, colors, pomodoro) |
-| board → laptop | `T touch` / `T release` | finger down / up (board smiles while touched + 2.5 s; during a pomodoro it shows the time left instead) |
+| board → laptop | `T touch` / `T release` / `T reset` | finger down / up (smiles while touched + 2.5 s; during a pomodoro it shows the time left instead); reset = 10 s hold |
+
+Lines longer than 20 bytes (HELLO, A, PAIR) are sent in 20-byte Bluetooth packets in both directions and joined
+back into lines on the other side.
 
 `lookX`, `lookY` are integers from −100 to 100, with 0,0 at the centre (and when no face is seen).
 Directions are on the board's screen **as the user sees it**: +X = pupils toward the right edge,
@@ -99,6 +140,10 @@ vision.js                         FaceLandmarker (GPU, CPU fallback) + signal ex
 attention.js                      pure classifier + mood state machine (no DOM, time passed in)
 colors.js                         colors card: color wheel, brightness, hex, saved color pairs
 link.js                           Link interface: SerialLink (USB) / BleLink (Nordic UART)
+boards.js                         your boards + keys (localStorage), HELLO parsing, HMAC answer (WebCrypto)
+session.js                        per-connection handshake: hello -> auth/pair -> ready / busy / failed
+flasher.js, md5.js, fw/           Update firmware button (esptool-js), firmware parts + manifest
+test/boards.test.mjs              node test/boards.test.mjs
 test/attention.test.mjs           node test/attention.test.mjs
 vendor/                           tasks-vision 0.10.35 bundle + wasm, face_landmarker.task (float16 v1)
 ```
@@ -129,9 +174,9 @@ live. **Save these colors** keeps the pair (up to 8) as a little face; click one
 stores the last colors it got, so they survive a restart.
 
 ## Board firmware
-Source in [`firmware/EyeBuddy`](firmware/EyeBuddy). Ready-made `EyeBuddy-firmware.bin` is on the
-[releases page](https://github.com/softobsessing/doomscroll-eyes/releases): flash it at 0x0 with
-https://espressif.github.io/esptool-js/ in Chrome.
+Source in [`firmware/EyeBuddy`](firmware/EyeBuddy). First time (or a board with other firmware): flash
+`EyeBuddy-firmware.bin` from the [releases page](https://github.com/softobsessing/doomscroll-eyes/releases) at 0x0 with
+https://espressif.github.io/esptool-js/ in Chrome. After that, use **Update firmware** on this page.
 
 ## Screen preview
 The round "EyeBuddy's screen" card shows exactly what the board shows, live, even with no board connected.

@@ -7,7 +7,8 @@ to touch, and react to you through the `eyebuddy-web` app (webcam, over USB or B
 
 **Ready-made firmware:** download `EyeBuddy-firmware.bin` from the
 [releases](https://github.com/softobsessing/doomscroll-eyes/releases) and flash it at **0x0** with
-https://espressif.github.io/esptool-js/ (Chrome). No Arduino needed.
+https://espressif.github.io/esptool-js/ (Chrome). No Arduino needed. That manual flash erases saved pairings; after
+the first time, use **Update firmware** on the website instead (keeps them).
 
 `preview/eyebuddy_session.gif` is a simulated session rendered on the Mac from this exact code.
 
@@ -44,8 +45,18 @@ Expression changes always happen mid-blink, so the eyes close in one mood and op
 - **any touch**: the welcome-back smile right away, for as long as your finger stays plus 2.5 s after.
 - **during a pomodoro**: the time left, for 2 s.
   With no laptop connected the eyes look at your finger.
+- **TAP TO PAIR** on screen: a computer wants to pair over Bluetooth; touch to accept (30 s).
+- **hold 10 s**: forget every paired computer (countdown `RESET IN 5…1`, then `RESET`).
 
-Connecting the web app (USB or Bluetooth) makes the eyes blink hello.
+Connecting the web app makes the eyes blink hello. For 5 s after power-on the screen shows the board's ID
+(`ID 3F2A`, from the chip's MAC); its Bluetooth name is `EyeBuddy-3F2A`.
+
+## Pairing (one board per computer)
+USB is trusted (plugging in = physical access). Over Bluetooth the board only obeys computers whose key it has
+(up to 8, stored in NVS, kept across power-off and web updates). Each connection: the board sends a one-time nonce
+in `HELLO`, the computer answers `A <HMAC-SHA256(key, nonce)>`. A new computer sends `PAIR <key>` and someone has
+to touch the board. One controller at a time (`BUSY`), one Bluetooth connection at a time (no advertising while
+connected). All of this lives in `brain.cpp` / `pairing.cpp` / `sha256.cpp` and is tested on the Mac.
 
 ## Upload
 
@@ -71,22 +82,27 @@ To go back to the Waveshare factory clock: `esp32-tools/venv/bin/esptool.py --ch
 ## Settings (`config.h`)
 - `SCREEN_ROTATION`: 270 matches the Waveshare demo. If the eyes are sideways on your mount, try 0 / 90 / 180.
 - `SCREEN_BRIGHTNESS`: 0–255.
-- `BLE_NAME`: keep it `EyeBuddy` unless you change it in the web app too.
+- `BLE_NAME`: prefix of the Bluetooth name (`EyeBuddy-<ID>`); keep it unless you change the web app too.
+- `FW_VERSION`: bump for each release, then run `python3 ../make_web_fw.py` after compiling.
 
-## Protocol (USB serial and Bluetooth Nordic UART, text lines)
+## Protocol v4 (USB serial and Bluetooth Nordic UART, text lines)
 ```
-laptop -> board   E <neutral|happy|side|sad|wow|chill|angry|dizzy> <lookX> <lookY>   (~20/s; -100..100; neutral = focused, wow = surprised, chill = chilling)
-                  K <screen RRGGBB> <eyes RRGGBB>                                       (colors)
-                  M <secondsLeft> <totalSeconds>                                        (pomodoro; M 0 0 = stop)
-                  S                                                                     (show the time left for 2 s)
-                  B | B2                                                           (blink now / double blink)
-                  P                                                                (ping)
-board -> laptop   HELLO EyeBuddy 3
-                  T touch | T release                (finger down / finger up)
+laptop -> board   P                                         hello? -> HELLO with a fresh nonce
+                  A <32 hex>                                HMAC-SHA256(key, nonce)[0..16] -> AUTH ok | AUTH no
+                  PAIR <32 hex key>                         USB: saved now. Bluetooth: TAP TO PAIR -> AUTH wait/ok/timeout
+                  E <neutral|happy|side|sad|wow|chill|angry|dizzy> <lookX> <lookY>   (~20/s; -100..100; neutral = focused, wow = surprised, chill = chilling)
+                  K <screen RRGGBB> <eyes RRGGBB>           colors
+                  M <secondsLeft> <totalSeconds>            pomodoro; M 0 0 = stop
+                  S                                         show the time left for 2 s
+                  B | B2                                    blink now / double blink
+board -> laptop   HELLO EyeBuddy 4 <id> <fw> <nonce>        (protocol 3 = firmware v5, no pairing)
+                  AUTH ok|no|wait|timeout|need              need = E/B/K/M/S before AUTH ok (Bluetooth)
+                  BUSY                                      another link is driving the eyes
+                  T touch | T release | T reset             (during a pomodoro a touch shows the time left)
                   D fps <n> worst_ms <n>     (USB only, every 10 s, for debugging)
 ```
 lookX + = toward the right side of the board's screen, lookY + = down. If no `E` line arrives for 3 s the board
-goes back to idle (neutral, looking around).
+goes back to idle (neutral, looking around). Bluetooth notifications and writes are split into 20-byte pieces.
 
 **Lockstep with the website.** While connected, the web app's screen preview is the clock: the board turns off its own
 random blinks and glances, blinks when it gets `B`, and its glances arrive inside the `E` look values. So the board shows
@@ -100,7 +116,8 @@ and right eye always change at the same time. PSRAM must be enabled (OPI PSRAM).
 - `brain.cpp`: touch beats laptop beats idle; protocol parsing. Plain C++.
 - `render.cpp`: rotation, redraws only the boxes around the eyes, two DMA buffers.
 - `display.c`: panel init (Waveshare's init commands, no LVGL). `touch.cpp`: FT3168 over Wire.
-- `ble_link.cpp`: Bluetooth Nordic UART service.
+- `ble_link.cpp`: Bluetooth Nordic UART service (one connection at a time, 20-byte pieces).
+- `pairing.cpp`, `sha256.cpp`: paired computers' keys, HMAC challenge. `text.cpp`: the pixel-font line under the eyes.
 
 Mac checks (in the original project folder, not in this repo) `tools/eyebuddy_preview/`: `test_brain` (logic), `test_render` (panel output pixel-exact vs the eye
 engine), `preview stills|anim|bench` (images).

@@ -8,7 +8,10 @@
 // 0..255. The AMOLED is very bright; the eyes are mostly black so this barely affects battery.
 #define SCREEN_BRIGHTNESS 200
 
-// Bluetooth name the web app looks for. Keep in sync with eyebuddy-web if you change it.
+// Bluetooth name prefix the web app looks for. Each board adds its own ID: "EyeBuddy-3F2A".
 #define BLE_NAME "EyeBuddy"
+
+// Firmware release number (the web app offers an update when its copy is newer).
+#define FW_VERSION 6
 
 #define TARGET_FPS 40

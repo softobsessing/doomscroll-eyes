@@ -3,6 +3,7 @@
 #include <string.h>
 #include "config.h"
 #include "display.h"
+#include "text.h"
 
 using namespace eyes;
 
@@ -61,13 +62,22 @@ static bool physicalRect(Box b, Box* p) {
   return true;
 }
 
-static void shadeRect(const Engine* engine, const Box& p) {
+// What logical pixel (x, y) shows: the text line on top of the eyes.
+uint16_t render_pixel(const Engine& engine, const char* text, int x, int y) {
+  if (text && textPixel(text, x, y)) {   // in the eye color
+    uint32_t c = engine.eyeColor();
+    return rgb565((c >> 19) & 31, (c >> 10) & 63, (c >> 3) & 31);
+  }
+  return engine.shade(x, y);
+}
+
+static void shadeRect(const Engine* engine, const char* text, const Box& p) {
   for (int py = p.y0; py <= p.y1; py++) {
     uint16_t* out = stage + py * N + p.x0;
     for (int px = p.x0; px <= p.x1; px++) {
       int lx, ly;
       toLogical(px, py, &lx, &ly);
-      uint16_t c = engine ? engine->shade(lx, ly) : 0;
+      uint16_t c = engine ? render_pixel(*engine, text, lx, ly) : 0;
       *out++ = (uint16_t)((c >> 8) | (c << 8));   // panel takes big-endian RGB565
     }
   }
@@ -94,7 +104,10 @@ static bool overlaps(const Box& a, const Box& b) {
   return a.x0 <= b.x1 + 8 && b.x0 <= a.x1 + 8 && a.y0 <= b.y1 + 8 && b.y0 <= a.y1 + 8;
 }
 
-void render_frame(const Engine& engine) {
+static char prevText[TEXT_MAX + 1];   // text currently on the panel ("" = none)
+
+void render_frame(const Engine& engine, const char* text) {
+  if (!text) text = "";
   // screen color changed, timer screen opened/closed/ticked (or first frame): redraw everything
   static uint32_t drawnVersion = 0;
   if (engine.fullVersion() != drawnVersion) {
@@ -103,28 +116,36 @@ void render_frame(const Engine& engine) {
       const Eye& e = engine.eye(i);
       prevBox[i] = {e.x0, e.y0, e.x1, e.y1, true};
     }
+    strncpy(prevText, text, TEXT_MAX);
+    prevText[TEXT_MAX] = 0;
     Box all = {0, 0, N - 1, N - 1, true};
-    shadeRect(&engine, all);
+    shadeRect(&engine, text, all);
     pushRect(all);
     return;
   }
-  Box region[2];
+  Box region[3];
   for (int i = 0; i < 2; i++) {
     const Eye& e = engine.eye(i);
     Box now = {e.x0, e.y0, e.x1, e.y1, true};
     region[i] = unite(prevBox[i], now);   // erase where the eye was, draw where it is
     prevBox[i] = now;
   }
-  Box logical[2];
+  Box logical[3];
   int n = 0;
   if (overlaps(region[0], region[1])) logical[n++] = unite(region[0], region[1]);
   else { logical[n++] = region[0]; logical[n++] = region[1]; }
-  Box phys[2];
+  if (strncmp(text, prevText, TEXT_MAX) != 0) {   // text appeared / changed / went away: redraw its old + new box
+    TextBox a = textBox(prevText), b = textBox(text);
+    logical[n++] = unite({a.x0, a.y0, a.x1, a.y1, a.valid}, {b.x0, b.y0, b.x1, b.y1, b.valid});
+    strncpy(prevText, text, TEXT_MAX);
+    prevText[TEXT_MAX] = 0;
+  }
+  Box phys[3];
   int m = 0;
   for (int i = 0; i < n; i++)
-    if (physicalRect(logical[i], &phys[m])) m++;
-  for (int i = 0; i < m; i++) shadeRect(&engine, phys[i]);   // phase 1: both eyes
-  for (int i = 0; i < m; i++) pushRect(phys[i]);             // phase 2: out together
+    if (logical[i].valid && physicalRect(logical[i], &phys[m])) m++;
+  for (int i = 0; i < m; i++) shadeRect(&engine, text, phys[i]);   // phase 1: both eyes (+ text)
+  for (int i = 0; i < m; i++) pushRect(phys[i]);                   // phase 2: out together
 }
 
 void render_to_logical(int px, int py, int* lx, int* ly) { toLogical(px, py, lx, ly); }
