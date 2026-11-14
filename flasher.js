@@ -23,6 +23,25 @@ async function fetchPart(f) {
   return { data, address: f.address };
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Restart the board into the new firmware. esptool-js 0.7.1's after('hard_reset') never pulls the reset
+ * line on the ESP32-S3's built-in USB (303A:1001): it only *releases* RTS, which is already released, so
+ * the chip stayed in the flasher (frozen screen, page stuck on "Reconnecting…") until it was replugged.
+ * USB-Serial-JTAG resets the chip while RTS is on with DTR off (DTR on would mean "boot into download
+ * mode"), the same pulse Python esptool sends. The chip drops off USB the moment it resets, so any
+ * write after the pulse can fail; that's fine.
+ */
+export async function resetIntoApp(transport) {
+  await transport.setDTR(false);
+  try {
+    await transport.setRTS(true);    // (esptool-js re-sends DTR right after this; the board may already be gone)
+    await sleep(100);
+    await transport.setRTS(false);
+  } catch {}
+}
+
 /**
  * @param {{port: SerialPort, manifest: object, onProgress?: (fraction:number, what:string)=>void, onLog?: (s:string)=>void}} o
  * The port must be closed (disconnect the app's USB link first).
@@ -48,7 +67,7 @@ export async function flashLatest({ port, manifest, onProgress = () => {}, onLog
       calculateMD5Hash: (image) => md5hex(image),   // esptool-js re-reads the flash and compares
     });
     onProgress(1, 'restarting the board');
-    await loader.after('hard_reset');
+    await resetIntoApp(transport);
   } finally {
     try { await transport.disconnect(); } catch {}
   }

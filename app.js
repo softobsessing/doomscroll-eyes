@@ -303,11 +303,24 @@ el.btnFw.onclick = async () => {
     const port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x303a }] });
     if (usb.connected) await usb.disconnect();   // the updater needs the port to itself
     await flashLatest({ port, manifest, onProgress: (f, what) => say(`${what}… ${Math.round(f * 100)}%`), onLog: (l) => console.debug('[esptool]', l) });
-    say(`Updated to firmware v${manifest.version}. Your pairings are kept. Reconnecting…`);
+    say(`Firmware v${manifest.version} written. Restarting EyeBuddy…`);
     usb._userClosed = false;   // let the "plugged back in" handler reopen it
-    setTimeout(() => { if (!usb.connected) renderBoards();
-// Reopen what this site was allowed to use before: USB first, else your Bluetooth board (if Chrome allows it).
-usb.autoReconnect().then((ok) => ok || ble.autoReconnect(store.active)).catch(() => {}); }, 3000);
+    // Wait for the board to come back on USB and say HELLO with the new version (it re-appears on USB
+    // about 1-2 s after the restart); reopen the port ourselves in case the "connect" event was missed.
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 700));
+      if (link?.connected && session?.board?.fw === manifest.version) {
+        say(`Updated to firmware v${manifest.version}. Your pairings are kept.`);
+        break;
+      }
+      if (Date.now() > deadline) {
+        say(`Firmware v${manifest.version} is written, but EyeBuddy didn't come back by itself. Unplug it and plug it back in.`);
+        break;
+      }
+      if (!usb.connected && usb.state !== 'connecting') await usb.autoReconnect().catch(() => false);
+    }
+    renderBoards();
   } catch (e) {
     say(e?.name === 'NotFoundError' ? 'No board picked.' : `Update failed: ${e?.message || e}. Unplug/replug and try again, or flash manually (see README).`);
   } finally {
