@@ -20,7 +20,10 @@ the first time, use **Update firmware** on the website instead (keeps them).
 | wobble → swirls (dizzy) | the website's **dizzy** button: the eyes rock around the face, flatten, spin as swirls for 1 s, then melt back into the focused ovals |
 
 ![angry](preview/angry.png)
+| hearts (love) | the website's **love** button: the ovals melt into hearts, pop, settle, then beat lub-dub |
+
 ![dizzy](preview/dizzy.png)
+![love](preview/love.png)
 | `^ ^` happy | you come back to the screen, or you touch it |
 | half-moons (side-eye) | your eyes leave the laptop screen (right away) |
 | droopy lids (disappointed) | still looking away 2 s later |
@@ -90,7 +93,7 @@ To go back to the Waveshare factory clock: `esp32-tools/venv/bin/esptool.py --ch
 laptop -> board   P                                         hello? -> HELLO with a fresh nonce
                   A <32 hex>                                HMAC-SHA256(key, nonce)[0..16] -> AUTH ok | AUTH no
                   PAIR <32 hex key>                         USB: saved now. Bluetooth: TAP TO PAIR -> AUTH wait/ok/timeout
-                  E <neutral|happy|side|sad|wow|chill|angry|dizzy> <lookX> <lookY>   (~20/s; -100..100; neutral = focused, wow = surprised, chill = chilling)
+                  E <neutral|happy|side|sad|wow|chill|angry|dizzy|love> <lookX> <lookY>   (~20/s; -100..100; neutral = focused, wow = surprised, chill = chilling)
                   K <screen RRGGBB> <eyes RRGGBB>           colors
                   M <secondsLeft> <totalSeconds>            pomodoro; M 0 0 = stop
                   S                                         show the time left for 2 s

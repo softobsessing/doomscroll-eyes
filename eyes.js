@@ -4,8 +4,8 @@
 
 // neutral = focused (tall ovals, the default), wow = surprised, chill = chilling (round dots),
 // angry / dizzy evolve out of the focused ovals (dizzy ends in swirls, then melts back into focused)
-export const MOODS = ['neutral', 'happy', 'side', 'sad', 'wow', 'chill', 'angry', 'dizzy'];
-const NEUTRAL = 0, HAPPY = 1, SIDE = 2, SAD = 3, WOW = 4, CHILL = 5, ANGRY = 6, DIZZY = 7;
+export const MOODS = ['neutral', 'happy', 'side', 'sad', 'wow', 'chill', 'angry', 'dizzy', 'love'];
+const NEUTRAL = 0, HAPPY = 1, SIDE = 2, SAD = 3, WOW = 4, CHILL = 5, ANGRY = 6, DIZZY = 7, LOVE = 8;
 export const DEFAULT_EYE_COLOR = 0xEFC742, DEFAULT_FACE_COLOR = 0x000000;
 const CREASE_DARKEN = 0.66;
 export const SCREEN = 466;
@@ -20,6 +20,7 @@ const STYLES = [
   [100, 70, 55, 36, 36],     // CHILL: the original round dots
   [98, 40, 30, 72, 80],      // ANGRY: shape animates, see ANGRY_KEYS
   [103, 15, 10, 80, 80],     // DIZZY: shape animates, see DIZZY_KEYS
+  [105, 40, 30, 70, 74],     // LOVE: heart size animates, see LOVE_KEYS
 ];
 
 // ---- smooth keyframe curves for angry + dizzy (same as eyes.cpp) ----
@@ -61,6 +62,23 @@ const DIZZY_KEYS = [
 export const DIZZY_TOTAL_MS = 3300;
 const SWIRL_R = 64, SWIRL_TURNS = 2.75, SWIRL_HALF = 5.5, SWIRL_MIN = 0.6, SWIRL_SPIN = 12.566;
 const TWO_PI = 6.2831853;
+// love (same as eyes.cpp): ovals melt into hearts, pop, bounce back, then beat lub-dub
+const HEART_S = 112, HEART_CY = 0.55, HEART_ROUND = 0.06, HEART_HALF_W = 0.67, HEART_HALF_H = 0.62;
+const LOVE_KEYS = [[0.00, 0, 1.00], [0.30, 1, 1.16], [0.48, 1, 0.94], [0.64, 1, 1.04], [0.80, 1, 1.00]];
+const BEAT_START = 1.0, BEAT_PERIOD = 1.2;
+function heartbeat(t) {
+  if (t < BEAT_START) return 0;
+  const u = (t - BEAT_START) % BEAT_PERIOD;
+  const a = (u - 0.15) / 0.06, b = (u - 0.36) / 0.06;
+  return 0.07 * Math.exp(-a * a) + 0.045 * Math.exp(-b * b);
+}
+function sdHeart(x, y) {   // unit heart (Inigo Quilez): tip at (0, 0), y points up
+  x = Math.abs(x);
+  if (y + x > 1) return len(x - 0.25, y - 0.75) - 0.35355339;
+  const m = 0.5 * Math.max(x + y, 0);
+  const d = Math.sqrt(Math.min(x * x + (y - 1) * (y - 1), (x - m) * (x - m) + (y - m) * (y - m)));
+  return x > y ? d : -d;
+}
 function sdSwirl(x, y, spin) {
   const thetaMax = SWIRL_TURNS * TWO_PI, b = SWIRL_R / thetaMax;
   const r = len(x, y);
@@ -189,6 +207,18 @@ function shapeDistance(e, x, y) {
       const body = sdEllipse(x, yy, e.rx - R, e.ry - R);
       const lid = (e.lidC + R * norm + e.lidK * xi - yy) / norm;
       return [(Math.max(body, lid) - R) * sq, 0];
+    }
+    case LOVE: {
+      const sq = Math.max(s, MIN_CLOSED_H / (2 * HEART_HALF_H * e.heartS));
+      const yy = y / sq;
+      const dh = (sdHeart(x / e.heartS, HEART_CY - yy / e.heartS) - HEART_ROUND) * e.heartS;
+      let d = dh;
+      if (e.morph < 1) {
+        const k = e.heartS / HEART_S;
+        const dov = sdEllipse(x / k, yy / k, FOCUS_RX, FOCUS_RY) * k;
+        d = dov + (dh - dov) * e.morph;
+      }
+      return [d * sq, 0];
     }
     case DIZZY: {
       const rx = x * e.cosr + y * e.sinr, ry = -x * e.sinr + y * e.cosr;
@@ -332,7 +362,7 @@ export class Engine {
       this.releasing = false; this.mood = NEUTRAL; this.moodSince = now;
     }
     if (!this.blinkPhase && this.target !== this.mood) {
-      const fromFocus = this.mood === NEUTRAL && (this.target === ANGRY || this.target === DIZZY);
+      const fromFocus = this.mood === NEUTRAL && (this.target === ANGRY || this.target === DIZZY || this.target === LOVE);
       const dizzyDone = this.mood === DIZZY && !this.dizzyRunning(now) && this.target === NEUTRAL;
       if (fromFocus || dizzyDone) { this.mood = this.target; this.moodSince = now; }
     }
@@ -373,7 +403,13 @@ export class Engine {
     let [spacing, gazeX, gazeY, halfW, halfH] = STYLES[shape];
     const animT = ((now - this.moodSince) >>> 0) / 1000;
     let pairRot = 0, offX = 0, offY = 0, eyeCy = 0, rx = 0, ry = 0, lidC = 0, lidK = 0, rnd = 0, swirl = 0;
-    if (shape === ANGRY) {
+    let morph = 0, heartS = HEART_S;
+    if (shape === LOVE) {
+      morph = clamp01(smoothKeys(LOVE_KEYS, 1, animT));
+      heartS = HEART_S * smoothKeys(LOVE_KEYS, 2, animT) * (1 + heartbeat(animT));
+      halfW = Math.max(HEART_HALF_W * heartS, FOCUS_RX * heartS / HEART_S);
+      halfH = Math.max(HEART_HALF_H * heartS, FOCUS_RY * heartS / HEART_S);
+    } else if (shape === ANGRY) {
       spacing = this.angryParam(1, animT, now); eyeCy = this.angryParam(2, animT, now);
       rx = this.angryParam(3, animT, now); ry = this.angryParam(4, animT, now);
       lidC = this.angryParam(5, animT, now); lidK = this.angryParam(6, animT, now); rnd = this.angryParam(7, animT, now);
@@ -402,6 +438,7 @@ export class Engine {
       e.cy = CY + this.lookY * gazeY;
       e.rot = pairRot; e.cosr = Math.cos(pairRot); e.sinr = Math.sin(pairRot);
       e.lidC = lidC; e.lidK = lidK; e.round = rnd; e.swirl = swirl;
+      e.morph = morph; e.heartS = heartS;
       e.spin = animT * SWIRL_SPIN;
       if (shape === DIZZY) {
         e.cx = CX + offX + e.side * spacing * e.cosr + this.lookX * gazeX;

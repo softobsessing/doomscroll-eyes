@@ -13,6 +13,7 @@ export const MOOD_LABELS = {
   chill: 'chilling',  // button only: the original round-dot eyes
   angry: 'angry',     // button only: lids slide down into a glare, then a squint
   dizzy: 'dizzy',     // button only, plays once: wobble -> swirls for 1 s -> back to focused
+  love: 'love',       // button only: heart eyes that pop in and beat
 };
 
 export const DEFAULT_THRESHOLDS = {

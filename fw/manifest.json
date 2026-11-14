@@ -1,11 +1,11 @@
 {
-  "version": 6,
+  "version": 7,
   "files": [
     {
       "file": "bootloader.bin",
       "address": 0,
-      "size": 19968,
-      "sha256": "84bb365666003b051f564d04380d0cf5d9d85c420ddafe9fc863071b49e49bfc"
+      "size": 20160,
+      "sha256": "62965f3a64154dd6ab998fdcf9652ba3d0fc5ad58f2c73cf2605dc81f5f14ed3"
     },
     {
       "file": "partitions.bin",
@@ -22,8 +22,8 @@
     {
       "file": "app.bin",
       "address": 65536,
-      "size": 694880,
-      "sha256": "d8fb3c9d86c980f2007c752a8f78d2b75b3cdf509a1bfab7d294b599514d32de"
+      "size": 1087456,
+      "sha256": "71053865bfa2234c054527a921d6f1e63362a0fa629c0bf38367543a5c501a9e"
     }
   ]
 }

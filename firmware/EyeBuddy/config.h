@@ -12,6 +12,6 @@
 #define BLE_NAME "EyeBuddy"
 
 // Firmware release number (the web app offers an update when its copy is newer).
-#define FW_VERSION 6
+#define FW_VERSION 7
 
 #define TARGET_FPS 40

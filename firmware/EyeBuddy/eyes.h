@@ -11,8 +11,8 @@ namespace eyes {
 // NEUTRAL = "focused" (tall ovals, the default), WOW = "surprised", CHILL = "chilling" (round dots),
 // ANGRY and DIZZY evolve out of the focused ovals (DIZZY ends in swirls, then melts back into focused).
 // Short names so the longest E line still fits one Bluetooth packet.
-enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, WOW, CHILL, ANGRY, DIZZY, MOOD_COUNT };
-const char* moodName(Mood m);              // "neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy"
+enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, WOW, CHILL, ANGRY, DIZZY, LOVE, MOOD_COUNT };
+const char* moodName(Mood m);              // "neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy", "love"
 bool parseMood(const char* s, Mood* out);
 
 constexpr int SCREEN = 466;
@@ -35,6 +35,8 @@ struct Eye {
   float rx, ry, pupilR, pupilIn, pupilDX, pupilDY;
   // angry / dizzy: tilt, slanted lid (y = lidC + lidK * x toward the nose), corner rounding, swirl blend + spin
   float rot, cosr, sinr, lidC, lidK, round, swirl, spin;
+  // love: oval -> heart blend (0..1) and the heart's size (px per heart unit, incl. pop + heartbeat)
+  float morph, heartS;
   int x0, y0, x1, y1;  // bounding box incl. anti-aliasing, inclusive
 };
 

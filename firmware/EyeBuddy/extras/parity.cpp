@@ -90,6 +90,19 @@ int main(int argc, char **argv) {
       for (uint32_t s : sshots) if (s == t) { dump(e, dir + "/settle_" + std::to_string(k++) + ".bin"); n++; }
     }
   }
+  // ---- love: ovals melt into hearts, pop, beat; blink while in love; back to focused ----
+  {
+    Engine e; e.begin(13); e.setWander(false); e.setAutoBlink(false);
+    const uint32_t lshots[] = { 400, 500, 600, 700, 850, 1300, 1450, 1560, 2100, 2600, 2680, 3200 };
+    int k = 0;
+    for (uint32_t t = 0; t <= 3300; t += 10) {
+      e.setMood(t < 300 ? NEUTRAL : t < 2550 ? LOVE : NEUTRAL);
+      e.setLook((float)(0.3 * sin(t / 450.0)), (float)(0.2 * cos(t / 650.0)));
+      if (t == 2050) e.blinkNow(t, false);
+      e.update(t);
+      for (uint32_t s : lshots) if (s == t) { dump(e, dir + "/love_" + std::to_string(k++) + ".bin"); n++; }
+    }
+  }
   printf("wrote %d frames to %s\n", n, dir.c_str());
   return 0;
 }

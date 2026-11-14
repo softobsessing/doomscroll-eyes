@@ -4,7 +4,7 @@
 
 namespace eyes {
 
-static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy"};
+static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy", "love"};
 const char* moodName(Mood m) { return m < MOOD_COUNT ? NAMES[m] : "?"; }
 bool parseMood(const char* s, Mood* out) {
   for (int i = 0; i < MOOD_COUNT; i++)
@@ -27,6 +27,7 @@ static const Style STYLES[MOOD_COUNT] = {
     /* CHILL  dots       */ {100, 70, 55, 36, 36},     // "chilling": the original round dots
     /* ANGRY  glare      */ {98, 40, 30, 72, 80},      // shape animates, see ANGRY_KEYS
     /* DIZZY  wobble     */ {103, 15, 10, 80, 80},     // shape animates, see DIZZY_KEYS
+    /* LOVE   hearts     */ {105, 40, 30, 70, 74},     // heart size animates, see LOVE_KEYS
 };
 
 // ---- smooth keyframe curves for angry + dizzy ----
@@ -76,6 +77,21 @@ static const float DIZZY_KEYS[][8] = {
 constexpr int DIZZY_N = sizeof(DIZZY_KEYS) / sizeof(DIZZY_KEYS[0]);
 constexpr uint32_t DIZZY_TOTAL_MS = 3300;
 constexpr float SWIRL_R = 64, SWIRL_TURNS = 2.75f, SWIRL_HALF = 5.5f, SWIRL_MIN = 0.6f, SWIRL_SPIN = 12.566f;   // rad/s (2 turns/s)
+
+// love: the focused ovals melt into hearts, pop a little bigger, bounce back, then beat (lub-dub).
+// Heart units: HEART_S px each; HEART_CY puts the heart's middle on the eye centre; HEART_ROUND softens the tip.
+constexpr float HEART_S = 112, HEART_CY = 0.55f, HEART_ROUND = 0.06f, HEART_HALF_W = 0.67f, HEART_HALF_H = 0.62f;
+static const float LOVE_KEYS[][3] = {   // t (s), oval -> heart blend, size
+    {0.00f, 0, 1.00f}, {0.30f, 1, 1.16f}, {0.48f, 1, 0.94f}, {0.64f, 1, 1.04f}, {0.80f, 1, 1.00f},
+};
+constexpr int LOVE_N = sizeof(LOVE_KEYS) / sizeof(LOVE_KEYS[0]);
+constexpr float BEAT_START = 1.0f, BEAT_PERIOD = 1.2f;
+static float heartbeat(float t) {   // extra size: a strong beat then a softer one, every BEAT_PERIOD s
+  if (t < BEAT_START) return 0;
+  float u = fmodf(t - BEAT_START, BEAT_PERIOD);
+  float a = (u - 0.15f) / 0.06f, b = (u - 0.36f) / 0.06f;
+  return 0.07f * expf(-a * a) + 0.045f * expf(-b * b);
+}
 
 // ---- surprised: the eyes grow through the four reference frames (logical px), smallest to biggest ----
 struct WowKey { float t, spacing, rx, ry, pupilR, pupilIn; };
@@ -188,6 +204,15 @@ static float sdSwirl(float x, float y, float spin) {
   return best - SWIRL_HALF;
 }
 
+// Exact distance to a unit heart (Inigo Quilez): tip at (0, 0), lobes on top up to y = 1.104, y points UP.
+static float sdHeart(float x, float y) {
+  x = fabsf(x);
+  if (y + x > 1) return len(x - 0.25f, y - 0.75f) - 0.35355339f;
+  float m = 0.5f * fmaxf(x + y, 0.0f);
+  float d = sqrtf(fminf(x * x + (y - 1) * (y - 1), (x - m) * (x - m) + (y - m) * (y - m)));
+  return x > y ? d : -d;
+}
+
 // Distance for one eye shape around its visible centre. `crease` gets the lid-line coverage (sad only).
 static float shapeDistance(const Eye& e, float x, float y, float* crease) {
   *crease = 0;
@@ -238,6 +263,18 @@ static float shapeDistance(const Eye& e, float x, float y, float* crease) {
       float body = sdEllipse(x, yy, e.rx - R, e.ry - R);
       float lid = (e.lidC + R * norm + e.lidK * xi - yy) / norm;   // > 0 above the lid
       return (fmaxf(body, lid) - R) * sq;
+    }
+    case LOVE: {   // the focused oval melting into a heart; blink squashes it like the others
+      float sq = fmaxf(s, MIN_CLOSED_H / (2 * HEART_HALF_H * e.heartS));
+      float yy = y / sq;
+      float dh = (sdHeart(x / e.heartS, HEART_CY - yy / e.heartS) - HEART_ROUND) * e.heartS;
+      float d = dh;
+      if (e.morph < 1) {
+        float k = e.heartS / HEART_S;   // the oval pops along with the heart
+        float dov = sdEllipse(x / k, yy / k, FOCUS_RX, FOCUS_RY) * k;
+        d = dov + (dh - dov) * e.morph;
+      }
+      return d * sq;
     }
     case DIZZY: {  // tilted oval, blending into a spinning swirl
       float rx = x * e.cosr + y * e.sinr, ry = -x * e.sinr + y * e.cosr;
@@ -455,7 +492,7 @@ void Engine::update(uint32_t now) {
     moodSince_ = now;
   }
   if (!blinkPhase_ && target_ != mood_) {
-    bool fromFocus = mood_ == NEUTRAL && (target_ == ANGRY || target_ == DIZZY);
+    bool fromFocus = mood_ == NEUTRAL && (target_ == ANGRY || target_ == DIZZY || target_ == LOVE);
     bool dizzyDone = mood_ == DIZZY && !dizzyRunning(now) && target_ == NEUTRAL;
     if (fromFocus || dizzyDone) { mood_ = target_; moodSince_ = now; }
   }
@@ -499,7 +536,13 @@ void Engine::update(uint32_t now) {
   float animT = (now - moodSince_) / 1000.0f;
   // angry / dizzy shape this frame
   float pairRot = 0, offX = 0, offY = 0, eyeCy = 0, rx = 0, ry = 0, lidC = 0, lidK = 0, rnd = 0, swirl = 0;
-  if (shape == ANGRY) {
+  float morph = 0, heartS = HEART_S;
+  if (shape == LOVE) {
+    morph = clamp01(smoothKeys(LOVE_KEYS, LOVE_N, 1, animT));
+    heartS = HEART_S * smoothKeys(LOVE_KEYS, LOVE_N, 2, animT) * (1 + heartbeat(animT));
+    halfW = fmaxf(HEART_HALF_W * heartS, FOCUS_RX * heartS / HEART_S);
+    halfH = fmaxf(HEART_HALF_H * heartS, FOCUS_RY * heartS / HEART_S);
+  } else if (shape == ANGRY) {
     spacing = angryParam(1, animT, now);
     eyeCy = angryParam(2, animT, now);
     rx = angryParam(3, animT, now);
@@ -534,6 +577,7 @@ void Engine::update(uint32_t now) {
     e.cy = CY + lookY_ * st.gazeY;
     e.rot = pairRot; e.cosr = cosf(pairRot); e.sinr = sinf(pairRot);
     e.lidC = lidC; e.lidK = lidK; e.round = rnd; e.swirl = swirl;
+    e.morph = morph; e.heartS = heartS;
     e.spin = animT * SWIRL_SPIN;
     if (shape == DIZZY) {   // the pair rocks around the middle of the face
       e.cx = CX + offX + e.side * spacing * e.cosr + lookX_ * st.gazeX;
