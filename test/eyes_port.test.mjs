@@ -116,6 +116,22 @@ function compare(name, e) {
     if (LSHOTS.includes(t)) compare(`love_${k++}`, e);
   }
 }
+// ---- excited, dart left -> right (straight across), deep in thought, overwhelmed ----
+{
+  const e = new Engine(17);
+  e.setWander(false); e.setAutoBlink(false);
+  const XSHOTS = [400, 500, 700, 1250, 1700, 2650, 2700, 2900, 3650, 3700, 3800, 4950,
+    6000, 6600, 6900, 7300, 8500, 9450, 9550, 9800, 10300, 11000, 11800];
+  let k = 0;
+  for (let t = 0; t <= 12000; t += 10) {
+    e.setMood(t < 300 ? 'neutral' : t < 2000 ? 'excite' : t < 2600 ? 'neutral' : t < 3600 ? 'left' : t < 5200 ? 'right'
+      : t < 5800 ? 'neutral' : t < 8800 ? 'think' : t < 9400 ? 'neutral' : 'over');
+    e.setLook(Math.fround(0.3 * Math.sin(t / 450)), Math.fround(0.2 * Math.cos(t / 650)));
+    if (t === 1200) e.blinkNow(t, false);
+    e.update(t);
+    if (XSHOTS.includes(t)) compare(`more_${k++}`, e);
+  }
+}
 console.log(`\n${frames} frames compared; worst frame has ${worst} pixels off by more than a rounding step`);
 assert.ok(worst <= 40, 'eyes.js no longer matches eyes.cpp');
 console.log('ok: the website preview matches the board');

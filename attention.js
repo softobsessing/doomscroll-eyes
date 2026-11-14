@@ -14,6 +14,12 @@ export const MOOD_LABELS = {
   angry: 'angry',     // button only: lids slide down into a glare, then a squint
   dizzy: 'dizzy',     // button only, plays once: wobble -> swirls for 1 s -> back to focused
   love: 'love',       // button only: heart eyes that pop in and beat
+  // reactions (button only; short names keep E lines in one Bluetooth packet)
+  excite: 'excited',          // bigger eyes, hopping
+  left: 'darting left',       // quick dart (stretched while moving), then holds
+  right: 'darting right',
+  think: 'deep in thought',   // eyes drift up, thought dots pop in
+  over: 'overwhelmed',        // squeezed shut > <, trembling, sweat drop
 };
 
 export const DEFAULT_THRESHOLDS = {

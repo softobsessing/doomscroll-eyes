@@ -4,8 +4,10 @@
 
 // neutral = focused (tall ovals, the default), wow = surprised, chill = chilling (round dots),
 // angry / dizzy evolve out of the focused ovals (dizzy ends in swirls, then melts back into focused)
-export const MOODS = ['neutral', 'happy', 'side', 'sad', 'wow', 'chill', 'angry', 'dizzy', 'love'];
+export const MOODS = ['neutral', 'happy', 'side', 'sad', 'wow', 'chill', 'angry', 'dizzy', 'love',
+  'excite', 'left', 'right', 'think', 'over'];
 const NEUTRAL = 0, HAPPY = 1, SIDE = 2, SAD = 3, WOW = 4, CHILL = 5, ANGRY = 6, DIZZY = 7, LOVE = 8;
+const EXCITE = 9, LEFT = 10, RIGHT = 11, THINK = 12, OVER = 13;
 export const DEFAULT_EYE_COLOR = 0xEFC742, DEFAULT_FACE_COLOR = 0x000000;
 const CREASE_DARKEN = 0.66;
 export const SCREEN = 466;
@@ -21,6 +23,11 @@ const STYLES = [
   [98, 40, 30, 72, 80],      // ANGRY: shape animates, see ANGRY_KEYS
   [103, 15, 10, 80, 80],     // DIZZY: shape animates, see DIZZY_KEYS
   [105, 40, 30, 70, 74],     // LOVE: heart size animates, see LOVE_KEYS
+  [103, 40, 30, 70, 92],     // EXCITE: see EXCITE_KEYS
+  [103, 10, 15, 67, 74],     // LEFT: see DART_KEYS
+  [103, 10, 15, 67, 74],     // RIGHT
+  [103, 10, 8, 57, 74],      // THINK: see THINK_KEYS
+  [103, 8, 6, 55, 74],       // OVER: see CHEV_* / DROP_*
 ];
 
 // ---- smooth keyframe curves for angry + dizzy (same as eyes.cpp) ----
@@ -66,6 +73,19 @@ const TWO_PI = 6.2831853;
 const HEART_S = 112, HEART_CY = 0.55, HEART_ROUND = 0.06, HEART_HALF_W = 0.67, HEART_HALF_H = 0.62;
 const LOVE_KEYS = [[0.00, 0, 1.00], [0.30, 1, 1.16], [0.48, 1, 0.94], [0.64, 1, 1.04], [0.80, 1, 1.00]];
 const BEAT_START = 1.0, BEAT_PERIOD = 1.2;
+const smooth01 = (v) => { v = v < 0 ? 0 : v > 1 ? 1 : v; return v * v * (3 - 2 * v); };
+// excited / darting / deep in thought / overwhelmed (same as eyes.cpp)
+const EXCITE_KEYS = [[0.00, 55, 74], [0.16, 68, 92], [0.30, 63, 84]];
+const HOP_START = 0.30, HOP_PERIOD = 0.52, HOP_H = 20;
+const DART_KEYS = [[0.00, 0, 0], [0.06, 0.55, 1], [0.12, 1.12, 0.35], [0.20, 0.96, 0], [0.28, 1, 0]];
+const DART_X = 46, DART_RY = 68, FLICK_START = 1.2, FLICK_PERIOD = 3.0, FLICK_X = 14;
+const THINK_KEYS = [[0.00, 0, 0, 55, 74, 90, 0], [0.70, 34, -34, 57, 64, 28, 10]];
+const THINK_SETTLE = 0.70, DOTS_PERIOD = 2.4;
+const THINK_DOTS = [[40, -108, 7], [72, -142, 10], [110, -168, 13]];
+const POP_KEYS = [[0.00, 0], [0.16, 1.18], [0.28, 1]];
+const CHEV_W = 32, CHEV_H = 30, CHEV_STROKE = 8;
+const DROP_START = 0.6, DROP_PERIOD = 2.0, DROP_X = 84, DROP_Y0 = -56, DROP_Y1 = 30;
+const DROP_R1 = 14, DROP_R2 = 3.5, DROP_H = 25;
 function heartbeat(t) {
   if (t < BEAT_START) return 0;
   const u = (t - BEAT_START) % BEAT_PERIOD;
@@ -173,6 +193,14 @@ function sdBezier(px, py, ax, ay, bx, by, cx, cy) {
 }
 
 // returns [distance, creaseCoverage]
+function sdDrop(x, y) {   // round bottom at the origin tapering up (y up), see eyes.cpp
+  x = Math.abs(x);
+  const b = (DROP_R1 - DROP_R2) / DROP_H, a = Math.sqrt(1 - b * b);
+  const k = -b * x + a * y;
+  if (k < 0) return len(x, y) - DROP_R1;
+  if (k > a * DROP_H) return len(x, y - DROP_H) - DROP_R2;
+  return a * x + b * y - DROP_R1;
+}
 function shapeDistance(e, x, y) {
   const s = e.squash, side = e.side;
   switch (e.shape) {
@@ -207,6 +235,25 @@ function shapeDistance(e, x, y) {
       const body = sdEllipse(x, yy, e.rx - R, e.ry - R);
       const lid = (e.lidC + R * norm + e.lidK * xi - yy) / norm;
       return [(Math.max(body, lid) - R) * sq, 0];
+    }
+    case EXCITE:
+    case LEFT:
+    case RIGHT: return [sdEllipse(x, y, e.rx, Math.max(e.ry * s, MIN_CLOSED_H / 2)), 0];
+    case THINK: {
+      const sq = Math.max(s, MIN_CLOSED_H / (2 * e.ry));
+      const yy = y / sq, R = e.round;
+      const body = sdEllipse(x, yy, e.rx - R, e.ry - R);
+      let d = (Math.max(body, yy - (e.lowC - R)) - R) * sq;
+      for (let k = 0; k < 3; k++) if (e.dotR[k] > 0) d = Math.min(d, len(x - e.dotX[k], y - e.dotY[k]) - e.dotR[k]);
+      return [d, 0];
+    }
+    case OVER: {
+      const ax = -side * CHEV_W, bx = side * CHEV_W, H = e.chevH;
+      const dc = Math.min(sdSegment(x, y, ax, 0, bx, -H), sdSegment(x, y, ax, 0, bx, H)) - CHEV_STROKE;
+      let d = dc;
+      if (e.morph < 1) { const dov = sdEllipse(x, y, e.rx, e.ry); d = dov + (dc - dov) * e.morph; }
+      if (e.dropK > 0) d = Math.min(d, sdDrop((x - e.dropX) / e.dropK, (e.dropY - y) / e.dropK) * e.dropK);
+      return [d, 0];
     }
     case LOVE: {
       const sq = Math.max(s, MIN_CLOSED_H / (2 * HEART_HALF_H * e.heartS));
@@ -265,6 +312,7 @@ export class Engine {
     this.eyes = [{}, {}];
     this.moodSince = 0;
     this.releasing = false; this.releaseStart = 0; this.releaseFromT = 0;   // angry -> focused settle
+    this.dartFrom = 0; this.dartFromRy = 0; this.lastDartX = 0;              // darting (see eyes.cpp)
     this.fullVersion = 1;   // bumps whenever the whole screen must be redrawn
     this.pomoActive = false; this.timerShown = false;
     this.pomoEnd = 0; this.pomoTotalMs = 0; this.timerUntil = 0; this.timerSecs = 0; this.timerFrac = 0;
@@ -310,7 +358,7 @@ export class Engine {
   setAutoBlink(on) { this.autoBlink = on; }
   dizzyRunning(now) { return this.mood === DIZZY && (((now >>> 0) - this.moodSince) >>> 0) < DIZZY_TOTAL_MS; }
   blinkNow(now, twice) {
-    if (this.blinkPhase || this.target !== this.mood || this.dizzyRunning(now) || this.releasing) return false;
+    if (this.blinkPhase || this.target !== this.mood || this.dizzyRunning(now) || this.releasing || this.mood === OVER) return false;
     this.startBlink(now >>> 0); this.doubleBlink = !!twice; return true;
   }
   angryParam(field, animT, now) {
@@ -325,10 +373,18 @@ export class Engine {
   get moodName() { return MOODS[this.mood]; }
   get blinking() { return this.blinkPhase !== 0; }
 
+  enterMood(m, now) {
+    const fromDart = this.mood === LEFT || this.mood === RIGHT;
+    if (m === LEFT || m === RIGHT) {
+      this.dartFrom = fromDart ? this.lastDartX : 0;
+      this.dartFromRy = fromDart ? DART_RY : FOCUS_RY;
+    }
+    this.mood = m; this.moodSince = now;
+  }
   startBlink(now) { this.blinkPhase = 1; this.blinkStart = now; this.swapped = false; this.doubleBlink = false; }
   blinkOpenness(now) {
     let t = (now - this.blinkStart) >>> 0;
-    if (!this.swapped && t >= BLINK_CLOSE) { this.mood = this.target; this.swapped = true; this.moodSince = now; }   // see eyes.cpp
+    if (!this.swapped && t >= BLINK_CLOSE) { this.enterMood(this.target, now); this.swapped = true; }   // see eyes.cpp
     const total = this.doubleBlink ? 2 * BLINK_END + DOUBLE_GAP : BLINK_END;
     if (t >= total) { this.blinkPhase = 0; return 1; }
     if (t >= BLINK_END) {
@@ -362,11 +418,12 @@ export class Engine {
       this.releasing = false; this.mood = NEUTRAL; this.moodSince = now;
     }
     if (!this.blinkPhase && this.target !== this.mood) {
-      const fromFocus = this.mood === NEUTRAL && (this.target === ANGRY || this.target === DIZZY || this.target === LOVE);
+      const fromFocus = this.mood === NEUTRAL && [ANGRY, DIZZY, LOVE, EXCITE, LEFT, RIGHT, THINK, OVER].includes(this.target);
       const dizzyDone = this.mood === DIZZY && !this.dizzyRunning(now) && this.target === NEUTRAL;
-      if (fromFocus || dizzyDone) { this.mood = this.target; this.moodSince = now; }
+      const dartSwap = (this.mood === LEFT || this.mood === RIGHT) && (this.target === LEFT || this.target === RIGHT);
+      if (fromFocus || dizzyDone || dartSwap) this.enterMood(this.target, now);
     }
-    const quiet = this.dizzyRunning(now) || this.releasing;
+    const quiet = this.dizzyRunning(now) || this.releasing || this.mood === OVER;
     if (!this.blinkPhase && !this.releasing && (this.target !== this.mood || (this.autoBlink && !quiet && reached(now, this.nextBlink)))) {
       const natural = this.target === this.mood;
       this.startBlink(now);
@@ -404,7 +461,68 @@ export class Engine {
     const animT = ((now - this.moodSince) >>> 0) / 1000;
     let pairRot = 0, offX = 0, offY = 0, eyeCy = 0, rx = 0, ry = 0, lidC = 0, lidK = 0, rnd = 0, swirl = 0;
     let morph = 0, heartS = HEART_S;
-    if (shape === LOVE) {
+    let faceX = 0, faceY = 0, lowC = 0, chevH = 0, dropX = 0, dropY = 0, dropK = 0;
+    const dots = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    if (shape === EXCITE) {
+      rx = smoothKeys(EXCITE_KEYS, 1, animT); ry = smoothKeys(EXCITE_KEYS, 2, animT);
+      const A = smooth01((animT - HOP_START) / 0.3);
+      const u = animT > HOP_START ? ((animT - HOP_START) % HOP_PERIOD) / HOP_PERIOD : 0;
+      const s = Math.sin(3.14159265 * u);
+      let g = (1 - s) * (1 - s) * (1 - s);
+      g *= g;
+      const ry0 = ry;
+      rx *= 1 + A * (0.08 * g - 0.04 * s);
+      ry *= 1 + A * (-0.10 * g + 0.05 * s);
+      faceY = -A * HOP_H * s + (ry0 - ry);
+      halfW = rx; halfH = ry;
+    } else if (shape === LEFT || shape === RIGHT) {
+      const dir = shape === LEFT ? -1 : 1, target = dir * DART_X;
+      const p = smoothKeys(DART_KEYS, 1, animT);
+      let sm = smoothKeys(DART_KEYS, 2, animT);
+      let x = this.dartFrom + (target - this.dartFrom) * p;
+      if (animT > FLICK_START) {
+        const v = (((animT - FLICK_START) % FLICK_PERIOD) - 0.15) / 0.06;
+        x -= dir * FLICK_X * Math.exp(-v * v);
+      }
+      this.lastDartX = x;
+      sm *= Math.min(Math.abs(target - this.dartFrom) / DART_X, 1.5);
+      rx = FOCUS_RX * (1 + 0.22 * sm);
+      ry = (this.dartFromRy + (DART_RY - this.dartFromRy) * clamp01(p)) * (1 - 0.10 * sm);
+      faceX = x;
+      halfW = rx; halfH = ry;
+    } else if (shape === THINK) {
+      const K = THINK_KEYS;
+      faceX = smoothKeys(K, 1, animT); faceY = smoothKeys(K, 2, animT);
+      rx = smoothKeys(K, 3, animT); ry = smoothKeys(K, 4, animT);
+      lowC = smoothKeys(K, 5, animT); rnd = smoothKeys(K, 6, animT);
+      const w = animT - THINK_SETTLE;
+      if (w > 0) {
+        const A = smooth01(w / 0.8);
+        faceX += A * 5 * Math.sin(w * 1.1);
+        faceY += A * 3 * Math.sin(w * 1.7);
+        const u = w % DOTS_PERIOD, fade = 1 - smooth01((u - 1.9) / 0.3);
+        for (let k = 0; k < 3; k++) {
+          dots[k] = [THINK_DOTS[k][0], THINK_DOTS[k][1], THINK_DOTS[k][2] * smoothKeys(POP_KEYS, 1, u - 0.25 * k) * fade];
+        }
+      }
+      halfW = rx; halfH = ry;
+    } else if (shape === OVER) {
+      const close = smooth01(animT / 0.16);
+      morph = smooth01((animT - 0.10) / 0.20);
+      rx = FOCUS_RX;
+      ry = FOCUS_RY + (MIN_CLOSED_H / 2 - FOCUS_RY) * close;
+      const A = smooth01((animT - 0.30) / 0.3);
+      chevH = CHEV_H * (1 - 0.18 * A * (0.5 - 0.5 * Math.cos(TWO_PI * 1.5 * animT)));
+      faceX = A * 2.5 * Math.sin(TWO_PI * 13 * animT);
+      faceY = A * 1.5 * Math.sin(TWO_PI * 9 * animT + 1);
+      if (animT > DROP_START) {
+        const u = ((animT - DROP_START) % DROP_PERIOD) / DROP_PERIOD;
+        dropK = smooth01(u / 0.12) * (1 - smooth01((u - 0.8) / 0.2));
+        dropX = DROP_X;
+        dropY = DROP_Y0 + (DROP_Y1 - DROP_Y0) * u * u;
+      }
+      halfW = FOCUS_RX; halfH = FOCUS_RY;
+    } else if (shape === LOVE) {
       morph = clamp01(smoothKeys(LOVE_KEYS, 1, animT));
       heartS = HEART_S * smoothKeys(LOVE_KEYS, 2, animT) * (1 + heartbeat(animT));
       halfW = Math.max(HEART_HALF_W * heartS, FOCUS_RX * heartS / HEART_S);
@@ -445,6 +563,15 @@ export class Engine {
         e.cy = CY + offY + e.side * spacing * e.sinr + this.lookY * gazeY;
       }
       if (shape === ANGRY) e.cy += eyeCy;
+      e.cx += faceX; e.cy += faceY;
+      e.lowC = lowC; e.chevH = chevH;
+      e.dotX = [0, 0, 0]; e.dotY = [0, 0, 0]; e.dotR = [0, 0, 0];
+      for (let k = 0; k < 3; k++) {
+        e.dotR[k] = i === 1 ? dots[k][2] / breathe : 0;
+        e.dotX[k] = (CX + dots[k][0] - e.cx) / breathe;
+        e.dotY[k] = (CY + dots[k][1] - e.cy) / breathe;
+      }
+      e.dropK = i === 1 ? dropK : 0; e.dropX = dropX; e.dropY = dropY;
       e.scale = breathe;
       e.squash = open;
       e.rx = shape === WOW ? wk.rx : rx; e.ry = shape === WOW ? wk.ry : ry;
@@ -454,6 +581,16 @@ export class Engine {
       const hw = halfW * breathe + 3, hh = halfH * breathe + 3;
       e.x0 = Math.floor(e.cx - hw); e.x1 = Math.ceil(e.cx + hw);
       e.y0 = Math.floor(e.cy - hh); e.y1 = Math.ceil(e.cy + hh);
+      const grow = (lx, ly, r) => {
+        const ax = e.cx + lx * breathe, ay = e.cy + ly * breathe, rr = r * breathe + 3;
+        e.x0 = Math.min(e.x0, Math.floor(ax - rr)); e.x1 = Math.max(e.x1, Math.ceil(ax + rr));
+        e.y0 = Math.min(e.y0, Math.floor(ay - rr)); e.y1 = Math.max(e.y1, Math.ceil(ay + rr));
+      };
+      for (let k = 0; k < 3; k++) if (e.dotR[k] > 0) grow(e.dotX[k], e.dotY[k], e.dotR[k]);
+      if (e.dropK > 0) {
+        grow(e.dropX, e.dropY, DROP_R1 * e.dropK);
+        grow(e.dropX, e.dropY - DROP_H * e.dropK, DROP_R2 * e.dropK);
+      }
     }
 
     // pomodoro: when time's up, show 00:00 for 3 s

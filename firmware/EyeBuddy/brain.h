@@ -8,7 +8,7 @@
 //                     PAIR <key>             32 hex chars (16 random bytes). USB: saved at once (USB = physical
 //                                            access). Bluetooth: board shows "TAP TO PAIR"; a touch saves it.
 //                                            -> AUTH ok | AUTH wait | AUTH timeout | AUTH no
-//                     E <neutral|happy|side|sad|wow|chill|angry|dizzy|love> <lookX -100..100> <lookY -100..100>
+//                     E <mood> <lookX -100..100> <lookY -100..100>   (mood names: eyes.cpp NAMES)
 //                       (neutral = focused tall ovals, wow = surprised, chill = chilling round dots)
 //                     K <screen RRGGBB> <eyes RRGGBB>   (colors, e.g. "K 000000 EFC742")
 //                     M <secondsLeft> <totalSeconds>    (pomodoro start/sync; "M 0 0" = stop)

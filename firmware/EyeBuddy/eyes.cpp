@@ -4,7 +4,8 @@
 
 namespace eyes {
 
-static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy", "love"};
+static const char* const NAMES[MOOD_COUNT] = {"neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy", "love",
+                                                  "excite", "left", "right", "think", "over"};
 const char* moodName(Mood m) { return m < MOOD_COUNT ? NAMES[m] : "?"; }
 bool parseMood(const char* s, Mood* out) {
   for (int i = 0; i < MOOD_COUNT; i++)
@@ -28,6 +29,11 @@ static const Style STYLES[MOOD_COUNT] = {
     /* ANGRY  glare      */ {98, 40, 30, 72, 80},      // shape animates, see ANGRY_KEYS
     /* DIZZY  wobble     */ {103, 15, 10, 80, 80},     // shape animates, see DIZZY_KEYS
     /* LOVE   hearts     */ {105, 40, 30, 70, 74},     // heart size animates, see LOVE_KEYS
+    /* EXCITE big + hop  */ {103, 40, 30, 70, 92},     // see EXCITE_KEYS
+    /* LEFT   dart       */ {103, 10, 15, 67, 74},     // see DART_KEYS
+    /* RIGHT  dart       */ {103, 10, 15, 67, 74},
+    /* THINK  up + dots  */ {103, 10, 8, 57, 74},      // see THINK_KEYS
+    /* OVER   > <        */ {103, 8, 6, 55, 74},       // see CHEV_* / DROP_*
 };
 
 // ---- smooth keyframe curves for angry + dizzy ----
@@ -86,6 +92,37 @@ static const float LOVE_KEYS[][3] = {   // t (s), oval -> heart blend, size
 };
 constexpr int LOVE_N = sizeof(LOVE_KEYS) / sizeof(LOVE_KEYS[0]);
 constexpr float BEAT_START = 1.0f, BEAT_PERIOD = 1.2f;
+static inline float smooth01(float v) { v = v < 0 ? 0 : (v > 1 ? 1 : v); return v * v * (3 - 2 * v); }
+
+// excited: the ovals pop bigger, then hop: squash on landing, stretch at the top
+static const float EXCITE_KEYS[][3] = {{0.00f, 55, 74}, {0.16f, 68, 92}, {0.30f, 63, 84}};   // t, rx, ry
+constexpr int EXCITE_N = sizeof(EXCITE_KEYS) / sizeof(EXCITE_KEYS[0]);
+constexpr float HOP_START = 0.30f, HOP_PERIOD = 0.52f, HOP_H = 20;
+
+// darting: a quick sideways move (stretched while moving), a small overshoot, then hold; now and then a
+// quick glance back toward the middle. p = 0..1 of the way there, smear = motion stretch.
+static const float DART_KEYS[][3] = {
+    {0.00f, 0, 0}, {0.06f, 0.55f, 1}, {0.12f, 1.12f, 0.35f}, {0.20f, 0.96f, 0}, {0.28f, 1, 0},
+};
+constexpr int DART_N = sizeof(DART_KEYS) / sizeof(DART_KEYS[0]);
+constexpr float DART_X = 46, DART_RY = 68, FLICK_START = 1.2f, FLICK_PERIOD = 3.0f, FLICK_X = 14;
+
+// deep in thought: eyes drift up and to the side with flat bottoms, sway slowly; three thought dots pop
+// in one by one toward the top right, then fade, and again.
+static const float THINK_KEYS[][7] = {   // t, x, y, rx, ry, flat bottom y, corner rounding
+    {0.00f, 0, 0, 55, 74, 90, 0}, {0.70f, 34, -34, 57, 64, 28, 10},
+};
+constexpr int THINK_N = sizeof(THINK_KEYS) / sizeof(THINK_KEYS[0]);
+constexpr float THINK_SETTLE = 0.70f, DOTS_PERIOD = 2.4f;
+static const float THINK_DOTS[3][3] = {{40, -108, 7}, {72, -142, 10}, {110, -168, 13}};   // from the screen centre
+static const float POP_KEYS[][2] = {{0.00f, 0}, {0.16f, 1.18f}, {0.28f, 1}};
+constexpr int POP_N = sizeof(POP_KEYS) / sizeof(POP_KEYS[0]);
+
+// overwhelmed: squeeze shut into > <, tremble, and a sweat drop slides down by the right eye
+constexpr float CHEV_W = 32, CHEV_H = 30, CHEV_STROKE = 8;
+constexpr float DROP_START = 0.6f, DROP_PERIOD = 2.0f, DROP_X = 84, DROP_Y0 = -56, DROP_Y1 = 30;
+constexpr float DROP_R1 = 14, DROP_R2 = 3.5f, DROP_H = 25;
+
 static float heartbeat(float t) {   // extra size: a strong beat then a softer one, every BEAT_PERIOD s
   if (t < BEAT_START) return 0;
   float u = fmodf(t - BEAT_START, BEAT_PERIOD);
@@ -213,6 +250,16 @@ static float sdHeart(float x, float y) {
   return x > y ? d : -d;
 }
 
+// Exact distance to a drop: round bottom (radius DROP_R1 at the origin) tapering up to DROP_R2. y points UP.
+static float sdDrop(float x, float y) {
+  x = fabsf(x);
+  const float b = (DROP_R1 - DROP_R2) / DROP_H, a = sqrtf(1 - b * b);
+  float k = -b * x + a * y;
+  if (k < 0) return len(x, y) - DROP_R1;
+  if (k > a * DROP_H) return len(x, y - DROP_H) - DROP_R2;
+  return a * x + b * y - DROP_R1;
+}
+
 // Distance for one eye shape around its visible centre. `crease` gets the lid-line coverage (sad only).
 static float shapeDistance(const Eye& e, float x, float y, float* crease) {
   *crease = 0;
@@ -275,6 +322,32 @@ static float shapeDistance(const Eye& e, float x, float y, float* crease) {
         d = dov + (dh - dov) * e.morph;
       }
       return d * sq;
+    }
+    case EXCITE:     // big hopping oval
+    case LEFT:
+    case RIGHT: {    // oval, stretched sideways while it darts
+      float ry = fmaxf(e.ry * s, MIN_CLOSED_H / 2);
+      return sdEllipse(x, y, e.rx, ry);
+    }
+    case THINK: {    // oval with a flat bottom (looking up), plus the thought dots
+      float sq = fmaxf(s, MIN_CLOSED_H / (2 * e.ry));
+      float yy = y / sq, R = e.round;
+      float body = sdEllipse(x, yy, e.rx - R, e.ry - R);
+      float d = (fmaxf(body, yy - (e.lowC - R)) - R) * sq;
+      for (int k = 0; k < 3; k++)
+        if (e.dotR[k] > 0) d = fminf(d, len(x - e.dotX[k], y - e.dotY[k]) - e.dotR[k]);
+      return d;
+    }
+    case OVER: {     // the oval squeezes shut, then becomes a thick chevron pointing at the nose (> <)
+      float ax = -side * CHEV_W, bx = side * CHEV_W, H = e.chevH;
+      float dc = fminf(sdSegment(x, y, ax, 0, bx, -H), sdSegment(x, y, ax, 0, bx, H)) - CHEV_STROKE;
+      float d = dc;
+      if (e.morph < 1) {
+        float dov = sdEllipse(x, y, e.rx, e.ry);
+        d = dov + (dc - dov) * e.morph;
+      }
+      if (e.dropK > 0) d = fminf(d, sdDrop((x - e.dropX) / e.dropK, (e.dropY - y) / e.dropK) * e.dropK);
+      return d;
     }
     case DIZZY: {  // tilted oval, blending into a spinning swirl
       float rx = x * e.cosr + y * e.sinr, ry = -x * e.sinr + y * e.cosr;
@@ -409,7 +482,7 @@ float Engine::blinkOpenness(uint32_t now) {
   // Swap the mood at the first update after the eyes reach shut. Don't require landing inside the
   // 30 ms shut window: at 50-60 ms per frame every sample skipped it, the mood never changed and the
   // eyes re-blinked forever (looked like a permanent squint).
-  if (!swappedThisBlink_ && t >= BLINK_CLOSE) { mood_ = target_; swappedThisBlink_ = true; moodSince_ = now; }
+  if (!swappedThisBlink_ && t >= BLINK_CLOSE) { enterMood(target_, now); swappedThisBlink_ = true; }
   uint32_t total = doubleBlink_ ? 2 * BLINK_END + DOUBLE_GAP : BLINK_END;
   if (t >= total) { blinkPhase_ = 0; return 1; }
   if (t >= BLINK_END) {
@@ -422,6 +495,16 @@ float Engine::blinkOpenness(uint32_t now) {
   return 1 - (1 - u) * (1 - u);
 }
 
+void Engine::enterMood(Mood m, uint32_t now) {
+  bool fromDart = mood_ == LEFT || mood_ == RIGHT;
+  if (m == LEFT || m == RIGHT) {   // dart from where the eyes are now
+    dartFrom_ = fromDart ? lastDartX_ : 0;
+    dartFromRy_ = fromDart ? DART_RY : FOCUS_RY;
+  }
+  mood_ = m;
+  moodSince_ = now;
+}
+
 bool Engine::dizzyRunning(uint32_t now) const { return mood_ == DIZZY && (uint32_t)(now - moodSince_) < DIZZY_TOTAL_MS; }
 
 float Engine::angryParam(int field, float animT, uint32_t now) const {
@@ -432,7 +515,7 @@ float Engine::angryParam(int field, float animT, uint32_t now) const {
 }
 
 bool Engine::blinkNow(uint32_t now, bool twice) {
-  if (blinkPhase_ || target_ != mood_ || dizzyRunning(now) || releasing_) return false;   // no blinking mid-wobble
+  if (blinkPhase_ || target_ != mood_ || dizzyRunning(now) || releasing_ || mood_ == OVER) return false;   // no blinking mid-wobble
   startBlink(now);
   doubleBlink_ = twice;
   return true;
@@ -492,12 +575,15 @@ void Engine::update(uint32_t now) {
     moodSince_ = now;
   }
   if (!blinkPhase_ && target_ != mood_) {
-    bool fromFocus = mood_ == NEUTRAL && (target_ == ANGRY || target_ == DIZZY || target_ == LOVE);
+    bool fromFocus = mood_ == NEUTRAL && (target_ == ANGRY || target_ == DIZZY || target_ == LOVE ||
+                                          target_ == EXCITE || target_ == LEFT || target_ == RIGHT ||
+                                          target_ == THINK || target_ == OVER);
+    bool dartSwap = (mood_ == LEFT || mood_ == RIGHT) && (target_ == LEFT || target_ == RIGHT);
     bool dizzyDone = mood_ == DIZZY && !dizzyRunning(now) && target_ == NEUTRAL;
-    if (fromFocus || dizzyDone) { mood_ = target_; moodSince_ = now; }
+    if (fromFocus || dizzyDone || dartSwap) enterMood(target_, now);
   }
   // blinking: random 2-6 s, sometimes a double blink; a mood change forces a blink right away
-  bool quiet = dizzyRunning(now) || releasing_;   // no random blinks while dizzy or settling
+  bool quiet = dizzyRunning(now) || releasing_ || mood_ == OVER;   // (overwhelmed: eyes are shut anyway)   // no random blinks while dizzy or settling
   if (!blinkPhase_ && !releasing_ && (target_ != mood_ || (autoBlink_ && !quiet && reached(now, nextBlink_)))) {
     bool natural = target_ == mood_;
     startBlink(now);
@@ -537,7 +623,72 @@ void Engine::update(uint32_t now) {
   // angry / dizzy shape this frame
   float pairRot = 0, offX = 0, offY = 0, eyeCy = 0, rx = 0, ry = 0, lidC = 0, lidK = 0, rnd = 0, swirl = 0;
   float morph = 0, heartS = HEART_S;
-  if (shape == LOVE) {
+  float faceX = 0, faceY = 0, lowC = 0, chevH = 0;
+  float dots[3][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};   // thought dots: x, y from the screen centre, radius
+  float dropX = 0, dropY = 0, dropK = 0;                   // sweat drop, right-eye local
+  if (shape == EXCITE) {
+    rx = smoothKeys(EXCITE_KEYS, EXCITE_N, 1, animT);
+    ry = smoothKeys(EXCITE_KEYS, EXCITE_N, 2, animT);
+    float A = smooth01((animT - HOP_START) / 0.3f);
+    float u = animT > HOP_START ? fmodf(animT - HOP_START, HOP_PERIOD) / HOP_PERIOD : 0;
+    float s = sinf(3.14159265f * u), g = (1 - s) * (1 - s) * (1 - s);
+    g *= g;   // (1 - s)^6: only right around the landing
+    float ry0 = ry;
+    rx *= 1 + A * (0.08f * g - 0.04f * s);
+    ry *= 1 + A * (-0.10f * g + 0.05f * s);
+    faceY = -A * HOP_H * s + (ry0 - ry);   // hop; the squash keeps the bottom on the ground
+    halfW = rx; halfH = ry;
+  } else if (shape == LEFT || shape == RIGHT) {
+    float dir = shape == LEFT ? -1.0f : 1.0f, target = dir * DART_X;
+    float p = smoothKeys(DART_KEYS, DART_N, 1, animT), sm = smoothKeys(DART_KEYS, DART_N, 2, animT);
+    float x = dartFrom_ + (target - dartFrom_) * p;
+    if (animT > FLICK_START) {
+      float v = (fmodf(animT - FLICK_START, FLICK_PERIOD) - 0.15f) / 0.06f;
+      x -= dir * FLICK_X * expf(-v * v);
+    }
+    lastDartX_ = x;
+    sm *= fminf(fabsf(target - dartFrom_) / DART_X, 1.5f);   // a longer dart smears more
+    rx = FOCUS_RX * (1 + 0.22f * sm);
+    ry = (dartFromRy_ + (DART_RY - dartFromRy_) * clamp01(p)) * (1 - 0.10f * sm);
+    faceX = x;
+    halfW = rx; halfH = ry;
+  } else if (shape == THINK) {
+    faceX = smoothKeys(THINK_KEYS, THINK_N, 1, animT);
+    faceY = smoothKeys(THINK_KEYS, THINK_N, 2, animT);
+    rx = smoothKeys(THINK_KEYS, THINK_N, 3, animT);
+    ry = smoothKeys(THINK_KEYS, THINK_N, 4, animT);
+    lowC = smoothKeys(THINK_KEYS, THINK_N, 5, animT);
+    rnd = smoothKeys(THINK_KEYS, THINK_N, 6, animT);
+    float w = animT - THINK_SETTLE;
+    if (w > 0) {
+      float A = smooth01(w / 0.8f);
+      faceX += A * 5 * sinf(w * 1.1f);
+      faceY += A * 3 * sinf(w * 1.7f);
+      float u = fmodf(w, DOTS_PERIOD), fade = 1 - smooth01((u - 1.9f) / 0.3f);
+      for (int k = 0; k < 3; k++) {
+        dots[k][0] = THINK_DOTS[k][0];
+        dots[k][1] = THINK_DOTS[k][1];
+        dots[k][2] = THINK_DOTS[k][2] * smoothKeys(POP_KEYS, POP_N, 1, u - 0.25f * k) * fade;
+      }
+    }
+    halfW = rx; halfH = ry;
+  } else if (shape == OVER) {
+    float close = smooth01(animT / 0.16f);
+    morph = smooth01((animT - 0.10f) / 0.20f);
+    rx = FOCUS_RX;
+    ry = FOCUS_RY + (MIN_CLOSED_H / 2 - FOCUS_RY) * close;
+    float A = smooth01((animT - 0.30f) / 0.3f);
+    chevH = CHEV_H * (1 - 0.18f * A * (0.5f - 0.5f * cosf(TWO_PI * 1.5f * animT)));
+    faceX = A * 2.5f * sinf(TWO_PI * 13 * animT);
+    faceY = A * 1.5f * sinf(TWO_PI * 9 * animT + 1);
+    if (animT > DROP_START) {
+      float u = fmodf(animT - DROP_START, DROP_PERIOD) / DROP_PERIOD;
+      dropK = smooth01(u / 0.12f) * (1 - smooth01((u - 0.8f) / 0.2f));
+      dropX = DROP_X;
+      dropY = DROP_Y0 + (DROP_Y1 - DROP_Y0) * u * u;   // speeds up as it slides
+    }
+    halfW = FOCUS_RX; halfH = FOCUS_RY;
+  } else if (shape == LOVE) {
     morph = clamp01(smoothKeys(LOVE_KEYS, LOVE_N, 1, animT));
     heartS = HEART_S * smoothKeys(LOVE_KEYS, LOVE_N, 2, animT) * (1 + heartbeat(animT));
     halfW = fmaxf(HEART_HALF_W * heartS, FOCUS_RX * heartS / HEART_S);
@@ -584,6 +735,14 @@ void Engine::update(uint32_t now) {
       e.cy = CY + offY + e.side * spacing * e.sinr + lookY_ * st.gazeY;
     }
     if (shape == ANGRY) e.cy += eyeCy;
+    e.cx += faceX; e.cy += faceY;
+    e.lowC = lowC; e.chevH = chevH;
+    for (int k = 0; k < 3; k++) {   // thought dots ride with the right eye (local px)
+      e.dotR[k] = i == 1 ? dots[k][2] / breathe : 0;
+      e.dotX[k] = (CX + dots[k][0] - e.cx) / breathe;
+      e.dotY[k] = (CY + dots[k][1] - e.cy) / breathe;
+    }
+    e.dropK = i == 1 ? dropK : 0; e.dropX = dropX; e.dropY = dropY;
     e.scale = breathe;
     e.squash = open;
     e.rx = shape == WOW ? wk.rx : rx; e.ry = shape == WOW ? wk.ry : ry;
@@ -593,6 +752,17 @@ void Engine::update(uint32_t now) {
     float hw = halfW * breathe + 3, hh = halfH * breathe + 3;
     e.x0 = (int)floorf(e.cx - hw); e.x1 = (int)ceilf(e.cx + hw);
     e.y0 = (int)floorf(e.cy - hh); e.y1 = (int)ceilf(e.cy + hh);
+    auto grow = [&](float lx, float ly, float r) {   // include an extra shape (local px) in the box
+      float ax = e.cx + lx * breathe, ay = e.cy + ly * breathe, rr = r * breathe + 3;
+      e.x0 = (int)fminf((float)e.x0, floorf(ax - rr)); e.x1 = (int)fmaxf((float)e.x1, ceilf(ax + rr));
+      e.y0 = (int)fminf((float)e.y0, floorf(ay - rr)); e.y1 = (int)fmaxf((float)e.y1, ceilf(ay + rr));
+    };
+    for (int k = 0; k < 3; k++)
+      if (e.dotR[k] > 0) grow(e.dotX[k], e.dotY[k], e.dotR[k] * 1.0f);
+    if (e.dropK > 0) {
+      grow(e.dropX, e.dropY, DROP_R1 * e.dropK);
+      grow(e.dropX, e.dropY - DROP_H * e.dropK, DROP_R2 * e.dropK);
+    }
   }
 
   // pomodoro: when time's up, show 00:00 for 3 s

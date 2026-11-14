@@ -11,8 +11,9 @@ namespace eyes {
 // NEUTRAL = "focused" (tall ovals, the default), WOW = "surprised", CHILL = "chilling" (round dots),
 // ANGRY and DIZZY evolve out of the focused ovals (DIZZY ends in swirls, then melts back into focused).
 // Short names so the longest E line still fits one Bluetooth packet.
-enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, WOW, CHILL, ANGRY, DIZZY, LOVE, MOOD_COUNT };
-const char* moodName(Mood m);              // "neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy", "love"
+enum Mood : uint8_t { NEUTRAL, HAPPY, SIDE, SAD, WOW, CHILL, ANGRY, DIZZY, LOVE, EXCITE, LEFT, RIGHT, THINK, OVER, MOOD_COUNT };
+const char* moodName(Mood m);              // "neutral", "happy", "side", "sad", "wow", "chill", "angry", "dizzy", "love",
+                                           // "excite", "left", "right", "think", "over"
 bool parseMood(const char* s, Mood* out);
 
 constexpr int SCREEN = 466;
@@ -37,6 +38,10 @@ struct Eye {
   float rot, cosr, sinr, lidC, lidK, round, swirl, spin;
   // love: oval -> heart blend (0..1) and the heart's size (px per heart unit, incl. pop + heartbeat)
   float morph, heartS;
+  // thinking: flat bottom (lowC). overwhelmed: chevron half height.
+  float lowC, chevH;
+  // extras drawn with the right eye, in its local px: thought dots (thinking), sweat drop (overwhelmed)
+  float dotX[3], dotY[3], dotR[3], dropX, dropY, dropK;
   int x0, y0, x1, y1;  // bounding box incl. anti-aliasing, inclusive
 };
 
@@ -116,6 +121,9 @@ class Engine {
   uint32_t releaseStart_ = 0;
   float releaseFromT_ = 0;   // how far into the angry animation we were when the release began
   float angryParam(int field, float animT, uint32_t now) const;
+  // darting: where the eyes were when a dart started (so left <-> right darts straight across)
+  float dartFrom_ = 0, dartFromRy_ = 0, lastDartX_ = 0;
+  void enterMood(Mood m, uint32_t now);
 
   // pomodoro + timer screen
   bool pomoActive_ = false, timerShown_ = false;

@@ -103,6 +103,21 @@ int main(int argc, char **argv) {
       for (uint32_t s : lshots) if (s == t) { dump(e, dir + "/love_" + std::to_string(k++) + ".bin"); n++; }
     }
   }
+  // ---- excited, dart left -> right (straight across), deep in thought, overwhelmed ----
+  {
+    Engine e; e.begin(17); e.setWander(false); e.setAutoBlink(false);
+    const uint32_t xshots[] = { 400, 500, 700, 1250, 1700, 2650, 2700, 2900, 3650, 3700, 3800, 4950,
+                                6000, 6600, 6900, 7300, 8500, 9450, 9550, 9800, 10300, 11000, 11800 };
+    int k = 0;
+    for (uint32_t t = 0; t <= 12000; t += 10) {
+      e.setMood(t < 300 ? NEUTRAL : t < 2000 ? EXCITE : t < 2600 ? NEUTRAL : t < 3600 ? LEFT : t < 5200 ? RIGHT
+              : t < 5800 ? NEUTRAL : t < 8800 ? THINK : t < 9400 ? NEUTRAL : OVER);
+      e.setLook((float)(0.3 * sin(t / 450.0)), (float)(0.2 * cos(t / 650.0)));
+      if (t == 1200) e.blinkNow(t, false);
+      e.update(t);
+      for (uint32_t s : xshots) if (s == t) { dump(e, dir + "/more_" + std::to_string(k++) + ".bin"); n++; }
+    }
+  }
   printf("wrote %d frames to %s\n", n, dir.c_str());
   return 0;
 }

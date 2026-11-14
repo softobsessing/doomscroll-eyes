@@ -82,7 +82,7 @@ afterwards. To publish a new firmware: bump `FW_VERSION` in `config.h`, compile,
 | laptop → board | `PAIR <key>` | 32 hex. USB: saved at once. Bluetooth: board shows TAP TO PAIR |
 | board → laptop | `AUTH ok` / `no` / `wait` / `timeout` / `need` | `need` = a control line (E/B/K/M/S) sent before `AUTH ok` |
 | board → laptop | `BUSY` | another link is driving the eyes |
-| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz once authorised + immediately on mood change. mood ∈ `neutral happy side sad wow chill angry dizzy love` (`neutral` = focused, `wow` = surprised, `chill` = chilling) |
+| laptop → board | `E <mood> <lookX> <lookY>` | 20 Hz once authorised + immediately on mood change. mood ∈ `neutral happy side sad wow chill angry dizzy love excite left right think over` (`neutral` = focused, `wow` = surprised, `chill` = chilling, `excite` = excited, `left`/`right` = darting, `think` = deep in thought, `over` = overwhelmed) |
 | laptop → board | `K <screen> <eyes>` | colors as `RRGGBB`, e.g. `K 000000 EFC742`; sent on connect and live while you drag the color wheel. The board saves them |
 | laptop → board | `B` / `B2` | blink now / double blink (the preview is the blink clock) |
 | laptop → board | `M <left> <total>` | pomodoro: seconds left / session length; sent at start, on connect and every minute. `M 0 0` = stop |
@@ -155,7 +155,13 @@ surprised / chilling / angry / dizzy / love**. Focused (the default) is two tall
 **dizzy** plays once: the eyes wobble around the face, flatten, spin as swirls for 1 s, then melt back into the
 focused ovals and your previous expression comes back.
 **love** turns the focused ovals into hearts: they melt into shape, pop a little bigger, settle, then beat
-(lub-dub) about once a second. Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
+(lub-dub) about once a second.
+
+**Reactions** (their own row): **excited** (the eyes pop bigger and hop, squashing as they land),
+**dart left / dart right** (a quick sideways dart, stretched while moving, then they hold and now and then glance back;
+left ↔ right darts straight across), **thinking** (the eyes drift up to the side with flat bottoms and sway while three
+thought dots pop in toward the top right), **overwhelmed** (squeezed shut into `> <`, trembling, with a sweat drop
+sliding down). All of them grow straight out of the focused ovals. Pressing one holds it on the board (and the preview) until you press Auto; the eyes still follow you.
 **surprised** is button-only: the eyes blink, then grow from small wide ovals to huge tall ones with tiny pupils.
 
 ## Pomodoro

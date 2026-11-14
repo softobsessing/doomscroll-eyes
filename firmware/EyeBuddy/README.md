@@ -24,6 +24,19 @@ the first time, use **Update firmware** on the website instead (keeps them).
 
 ![dizzy](preview/dizzy.png)
 ![love](preview/love.png)
+
+| reaction | how it moves |
+|---|---|
+| excited | the ovals pop bigger and hop (squash on landing, stretch at the top) |
+| dart left / right | quick sideways dart with a motion stretch and a small overshoot, then hold; glances back now and then |
+| thinking | eyes drift up to the side with flat bottoms and sway; three thought dots pop in toward the top right |
+| overwhelmed | squeeze shut into `> <`, tremble; a sweat drop slides down by the right eye |
+
+![excited](preview/excited.png)
+![dart left](preview/dart-left.png)
+![dart right](preview/dart-right.png)
+![thinking](preview/thinking.png)
+![overwhelmed](preview/overwhelmed.png)
 | `^ ^` happy | you come back to the screen, or you touch it |
 | half-moons (side-eye) | your eyes leave the laptop screen (right away) |
 | droopy lids (disappointed) | still looking away 2 s later |
@@ -93,7 +106,7 @@ To go back to the Waveshare factory clock: `esp32-tools/venv/bin/esptool.py --ch
 laptop -> board   P                                         hello? -> HELLO with a fresh nonce
                   A <32 hex>                                HMAC-SHA256(key, nonce)[0..16] -> AUTH ok | AUTH no
                   PAIR <32 hex key>                         USB: saved now. Bluetooth: TAP TO PAIR -> AUTH wait/ok/timeout
-                  E <neutral|happy|side|sad|wow|chill|angry|dizzy|love> <lookX> <lookY>   (~20/s; -100..100; neutral = focused, wow = surprised, chill = chilling)
+                  E <mood> <lookX> <lookY>   (~20/s; -100..100; mood: neutral happy side sad wow chill angry dizzy love excite left right think over)
                   K <screen RRGGBB> <eyes RRGGBB>           colors
                   M <secondsLeft> <totalSeconds>            pomodoro; M 0 0 = stop
                   S                                         show the time left for 2 s

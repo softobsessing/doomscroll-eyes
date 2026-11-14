@@ -257,10 +257,31 @@ table.signals { width: 100%; border-collapse: collapse; font-size: 13px; font-va
 }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px); } }
 
+/* reactions: their own row under the moods */
+.react-head { grid-column: 1 / -1; margin: 8px 0 -2px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.react-btns { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.ico-excite::before, .ico-excite::after { width: 10px; height: 13px; border-radius: 50%; transform: translateY(-50%); }
+.ico-excite::before { left: 1px; } .ico-excite::after { right: 1px; }
+.ico-left::before, .ico-left::after, .ico-right::before, .ico-right::after { width: 7px; height: 11px; border-radius: 50%; transform: translateY(-50%); }
+.ico-left::before { left: -2px; } .ico-left::after { left: 9px; }
+.ico-right::before { right: 9px; } .ico-right::after { right: -2px; }
+.ico-think::before, .ico-think::after { width: 8px; height: 6px; border-radius: 5px 5px 0 0; top: 40%; }
+.ico-think::before { left: 5px; } .ico-think::after { right: -1px; }
+.ico-think::before, .ico-think::after { top: 66%; }
+.ico-think { height: 20px; background:
+  radial-gradient(circle at 50% 44%, #e9b93a 0 1.3px, transparent 1.8px),
+  radial-gradient(circle at 66% 27%, #e9b93a 0 1.8px, transparent 2.3px),
+  radial-gradient(circle at 85% 13%, #e9b93a 0 2.3px, transparent 2.8px); }
+.ico-over::before, .ico-over::after { background: none; color: #e9b93a; font: 900 15px/1 system-ui, sans-serif; transform: translateY(-55%); }
+.ico-over::before { content: ">"; left: 2px; } .ico-over::after { content: "<"; right: 2px; }
+#mood[data-mood="excite"] { color: #ffd84a; }
+#mood[data-mood="think"] { color: #9fd3ff; }
+#mood[data-mood="over"] { color: #ff9f6b; }
+
 /* wide screens: 3 x 3 tiles with the little screen beside the name */
 @media (min-width: 861px) {
-  .expr-btns button:not(.expr-auto) { flex-direction: row; justify-content: flex-start; gap: 12px; padding: 8px 12px; font-size: 14px; }
-  .expr-btns button:not(.expr-auto) .mini { width: 44px; height: 44px; flex: none; }
+  .expr-btns > button:not(.expr-auto) { flex-direction: row; justify-content: flex-start; gap: 12px; padding: 8px 12px; font-size: 14px; }
+  .expr-btns > button:not(.expr-auto) .mini { width: 44px; height: 44px; flex: none; }
 }
 @media (max-width: 860px) {
   main, .tuning-grid { grid-template-columns: 1fr; }
@@ -271,6 +292,7 @@ table.signals { width: 100%; border-collapse: collapse; font-size: 13px; font-va
   .expr-btns { gap: 8px; }
   .expr-btns button { font-size: 12px; }
   .mini { width: 46px; height: 46px; }
+  .react-btns { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "files": [
     {
       "file": "bootloader.bin",
@@ -22,8 +22,8 @@
     {
       "file": "app.bin",
       "address": 65536,
-      "size": 1087456,
-      "sha256": "71053865bfa2234c054527a921d6f1e63362a0fa629c0bf38367543a5c501a9e"
+      "size": 1092192,
+      "sha256": "1b7f294b550b3bf151cf8fb694ed05f6a92192fa86c87a5bffc4e737441f86c7"
     }
   ]
 }
