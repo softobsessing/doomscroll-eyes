@@ -6,7 +6,7 @@ import {
 import { SerialLink, BleLink } from './link.js';
 import { Engine as EyeEngine, Mirror, ScreenPreview, DIZZY_TOTAL_MS } from './eyes.js';
 import { ColorPicker, DEFAULT_COLORS, hex6 } from './colors.js';
-import { BoardStore, bleName, idFromName, isBoardId } from './boards.js';
+import { BoardStore, bleName, idFromName, isBoardId, otherBoard } from './boards.js';
 import { Session } from './session.js';
 
 const $ = (id) => document.getElementById(id);
@@ -143,10 +143,29 @@ function onSession(s) {
   renderBoards();
 }
 
-function showLinkMsg(text, kind = 'info') {
+function showLinkMsg(text, kind = 'info', action = null) {
   el.linkMsg.hidden = !text;
   el.linkMsg.textContent = text;
   el.linkMsg.dataset.kind = kind;
+  if (text && action) {
+    const a = document.createElement('a');
+    a.href = action.href;
+    a.textContent = action.text;
+    el.linkMsg.append(' ', a);
+  }
+}
+
+// The board on this link isn't an EyeBuddy (e.g. a RoboEyes, same USB chip): point to its own app
+// and leave it alone. Over USB, try the next port this site may use.
+async function leaveOtherBoard({ name, other }) {
+  const l = link;
+  session = null;   // so the disconnect below doesn't clear the message
+  showLinkMsg(other ? `That's ${other.label}, not an EyeBuddy. It has its own app:` : `That board says it's "${name}", not an EyeBuddy. This app only works with EyeBuddy boards.`,
+    'warn', other ? { text: `open ${other.app}`, href: other.url } : null);
+  if (l === usb) {
+    await usb.reject();
+    usb.autoReconnect().catch(() => {});
+  } else await l?.disconnect();
 }
 
 function renderPill(s) {
@@ -207,6 +226,8 @@ const TOUCH_TOASTS = {
 
 function handleBoardLine(line) {
   const parts = line.trim().split(/\s+/);
+  const other = otherBoard(line);
+  if (other) { leaveOtherBoard(other); return; }
   if (parts[0] === 'HELLO' || parts[0] === 'AUTH' || parts[0] === 'BUSY') {
     session?.onLine(line);
   } else if (parts[0] === 'T' && parts[1]) {

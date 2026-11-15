@@ -1,6 +1,6 @@
 // node test/boards.test.mjs — boards.js: HELLO parsing, the challenge answer (vs Python's hmac), the board store.
 import assert from 'node:assert/strict';
-import { parseHello, answer, newKey, BoardStore, bleName, idFromName, isBoardId } from '../boards.js';
+import { parseHello, answer, newKey, BoardStore, bleName, idFromName, isBoardId, otherBoard } from '../boards.js';
 
 let passed = 0, failed = 0;
 async function test(name, fn) {
@@ -13,6 +13,17 @@ await test('parseHello: pairing board (protocol 4) and older boards', () => {
   assert.deepEqual(parseHello('HELLO EyeBuddy 3'), { proto: 3, id: null, fw: null, nonce: null });   // firmware v5
   assert.deepEqual(parseHello('HELLO EyeBuddy 1'), { proto: 1, id: null, fw: null, nonce: null });
   assert.equal(parseHello('T touch'), null);
+});
+
+await test('otherBoard: a RoboEyes board is pointed to its own app; EyeBuddy and other lines are not', () => {
+  const o = otherBoard('HELLO RoboEyes 2 3F2A 2');
+  assert.equal(o.name, 'RoboEyes');
+  assert.match(o.other.url, /RoboEyes/);
+  assert.equal(otherBoard('HELLO RoboEyes 1').name, 'RoboEyes');   // old RoboEyes firmware
+  assert.deepEqual(otherBoard('HELLO Gizmo 1'), { name: 'Gizmo', other: null });
+  assert.equal(otherBoard('HELLO EyeBuddy 4 3F2A 8 0123456789abcdef'), null);
+  assert.equal(otherBoard('T touch'), null);
+  assert.equal(parseHello('HELLO RoboEyes 2 3F2A 2'), null);   // never treated as an EyeBuddy
 });
 
 await test('answer = first 16 bytes of HMAC-SHA256(key, nonce), same as Python hmac / the board', async () => {

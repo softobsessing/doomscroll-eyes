@@ -5,6 +5,7 @@
 //   link.onLine(cb)       cb(line) for every line from the board (without '\n')
 //   link.onStatus(cb)     cb({state, detail}) state: disconnected|connecting|connected|reconnecting|error
 //   link.disconnect()
+//   link.reject()         (USB) close a port that turned out to be some other board; auto-connect skips it
 //
 // Writes are serialized (never two in flight). While a write is in flight, a newer `E ...`
 // line replaces any older queued `E ...` line (stale eye frames are dropped, newest kept), and the
@@ -103,6 +104,7 @@ export class SerialLink extends Link {
     this._writer = null;
     this._pipeDone = null;
     this._userClosed = false;
+    this._rejected = new WeakSet();   // ports that answered as some other kind of board (e.g. a RoboEyes)
     if ('serial' in navigator) {
       navigator.serial.addEventListener('disconnect', (ev) => {
         if (ev.target === this.port || ev.port === this.port) this._lost('USB unplugged');
@@ -110,7 +112,7 @@ export class SerialLink extends Link {
       // A previously granted EyeBuddy was plugged back in: reopen it.
       navigator.serial.addEventListener('connect', (ev) => {
         const port = ev.target instanceof SerialPort ? ev.target : ev.port;
-        if (!this.port && !this._userClosed && port && isEspressif(port)) this._open(port).catch(() => {});
+        if (!this.port && !this._userClosed && port && isEspressif(port) && !this._rejected.has(port)) this._open(port).catch(() => {});
       });
     }
   }
@@ -125,13 +127,19 @@ export class SerialLink extends Link {
     await this._open(port);
   }
 
-  /** On page load: silently reopen a port the user granted before. Returns true if opened. */
+  /** On page load: silently reopen a port the user granted before (skipping rejected ones). Returns true if opened. */
   async autoReconnect() {
     if (!SerialLink.supported()) return false;
-    const ports = await navigator.serial.getPorts();
+    const ports = (await navigator.serial.getPorts()).filter((p) => !this._rejected.has(p));
     if (!ports.length) return false;
     const port = ports.find(isEspressif) || ports[0];
     try { await this._open(port); return true; } catch { return false; }
+  }
+
+  /** This port is some other board: close it and leave it alone (until the page reloads). */
+  async reject() {
+    if (this.port) this._rejected.add(this.port);
+    await this.disconnect();
   }
 
   async _open(port) {

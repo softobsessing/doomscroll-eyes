@@ -39,6 +39,11 @@ If the camera is denied or missing, a demo panel with 4 mood buttons appears ins
 Only one link is active at a time. The pill shows which board and what the handshake is doing. Touch events from
 the board show up as a toast.
 
+This app only drives **EyeBuddy** boards. A **RoboEyes** board (pill eyes on a 3D ball, same Waveshare screen)
+has its own app at https://softobsessing.github.io/RoboEyes/. If you plug one in here, the page says so, links
+there and leaves the port alone (over USB it moves on to the next port this site may use). RoboEyes boards
+advertise as `RoboEyes-XXXX`, so the Bluetooth chooser here never lists them.
+
 ## One board per computer (pairing)
 
 Every board has its own ID, the last 4 hex digits of its chip's MAC address. The board shows it on screen for 5 s after

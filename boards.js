@@ -11,6 +11,19 @@ export const bleName = (id) => `${BLE_PREFIX}-${id}`;
 export const idFromName = (name) => (/^EyeBuddy-([0-9A-F]{4})$/i.exec(name || '') || [])[1]?.toUpperCase() || null;
 export const isBoardId = (id) => /^[0-9A-F]{4}$/.test(id || '');
 
+/** Web apps for other boards on the same ESP32-S3 screen. This app only drives EyeBuddy boards. */
+export const OTHER_APPS = {
+  RoboEyes: { label: 'a RoboEyes board', app: 'the RoboEyes app', url: 'https://softobsessing.github.io/RoboEyes/' },
+};
+
+/** "HELLO RoboEyes 2 3F2A 2" -> {name: 'RoboEyes', other: OTHER_APPS.RoboEyes}: a board that isn't an EyeBuddy.
+ *  EyeBuddy hellos and non-hello lines -> null. */
+export function otherBoard(line) {
+  const p = String(line).trim().split(/\s+/);
+  if (p[0] !== 'HELLO' || !p[1] || p[1] === 'EyeBuddy') return null;
+  return { name: p[1], other: OTHER_APPS[p[1]] || null };
+}
+
 /** First protocol with board IDs + pairing (firmware v6). 1 = firmware v1-v4, 3 = firmware v5. */
 export const PAIRING_PROTOCOL = 4;
 
